@@ -3,6 +3,7 @@ package multistream
 import (
 	"encoding/binary"
 	"io"
+	"sync"
 )
 
 const ProtocolID = "/multistream/version1.0.0"
@@ -10,11 +11,12 @@ const ProtocolID = "/multistream/version1.0.0"
 type HandlerFunc func(io.ReadWriteCloser) error
 
 type MultistreamMuxer struct {
-	Handlers map[string]HandlerFunc
+	handlerlock sync.Mutex
+	handlers    map[string]HandlerFunc
 }
 
 func NewMultistreamMuxer() *MultistreamMuxer {
-	return &MultistreamMuxer{Handlers: make(map[string]HandlerFunc)}
+	return &MultistreamMuxer{handlers: make(map[string]HandlerFunc)}
 }
 
 func delimWrite(w io.Writer, mes []byte) error {
@@ -29,6 +31,12 @@ func delimWrite(w io.Writer, mes []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (msm *MultistreamMuxer) AddHandler(protocol string, handler HandlerFunc) {
+	msm.handlerlock.Lock()
+	msm.handlers[protocol] = handler
+	msm.handlerlock.Unlock()
 }
 
 func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
@@ -48,11 +56,19 @@ loop:
 
 		switch tok {
 		case "ls":
-			for proto, _ := range msm.Handlers {
-				delimWrite(rwc, []byte(proto))
+			msm.handlerlock.Lock()
+			for proto, _ := range msm.handlers {
+				err := delimWrite(rwc, []byte(proto))
+				if err != nil {
+					msm.handlerlock.Unlock()
+					return err
+				}
 			}
+			msm.handlerlock.Unlock()
 		default:
-			h, ok := msm.Handlers[tok]
+			msm.handlerlock.Lock()
+			h, ok := msm.handlers[tok]
+			msm.handlerlock.Unlock()
 			if !ok {
 				delimWrite(rwc, []byte("no such protocol"))
 				continue loop
