@@ -3,10 +3,12 @@ package multistream
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"io"
 	"sync"
 )
+
+var ErrTooLarge = errors.New("incoming message was too large")
 
 const ProtocolID = "/multistream/version1.0.0"
 
@@ -62,7 +64,6 @@ func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
 		return err
 	}
 
-	fmt.Println("WROTE HELLO")
 loop:
 	for {
 		// Now read and respond to commands until they send a valid protocol id
@@ -121,7 +122,7 @@ func ReadNextToken(rw io.ReadWriter) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		//TODO: should we error out here?
+		return "", ErrTooLarge
 	}
 
 	buf := make([]byte, length)
