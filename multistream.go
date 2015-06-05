@@ -1,7 +1,9 @@
 package multistream
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -19,13 +21,27 @@ func NewMultistreamMuxer() *MultistreamMuxer {
 	return &MultistreamMuxer{handlers: make(map[string]HandlerFunc)}
 }
 
-func delimWrite(w io.Writer, mes []byte) error {
+func writeUvarint(w io.Writer, i uint64) error {
 	varintbuf := make([]byte, 32)
-	n := binary.PutUvarint(varintbuf, uint64(len(mes)))
+	n := binary.PutUvarint(varintbuf, i)
 	_, err := w.Write(varintbuf[:n])
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func delimWrite(w io.Writer, mes []byte) error {
+	err := writeUvarint(w, uint64(len(mes)))
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(mes)
+	if err != nil {
+		return err
+	}
+
 	_, err = w.Write([]byte{'\n'})
 	if err != nil {
 		return err
@@ -46,6 +62,7 @@ func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
 		return err
 	}
 
+	fmt.Println("WROTE HELLO")
 loop:
 	for {
 		// Now read and respond to commands until they send a valid protocol id
@@ -56,24 +73,36 @@ loop:
 
 		switch tok {
 		case "ls":
+			buf := new(bytes.Buffer)
 			msm.handlerlock.Lock()
 			for proto, _ := range msm.handlers {
-				err := delimWrite(rwc, []byte(proto))
+				err := delimWrite(buf, []byte(proto))
 				if err != nil {
 					msm.handlerlock.Unlock()
 					return err
 				}
 			}
 			msm.handlerlock.Unlock()
+			err := delimWrite(rwc, buf.Bytes())
+			if err != nil {
+				return err
+			}
 		default:
 			msm.handlerlock.Lock()
 			h, ok := msm.handlers[tok]
 			msm.handlerlock.Unlock()
 			if !ok {
-				delimWrite(rwc, []byte("no such protocol"))
+				err := delimWrite(rwc, []byte("na"))
+				if err != nil {
+					return err
+				}
 				continue loop
 			}
 
+			err := delimWrite(rwc, []byte(tok))
+			if err != nil {
+				return err
+			}
 			// hand off processing to the sub-protocol handler
 			return h(rwc)
 		}
