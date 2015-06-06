@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-const ProtocolID = "/multistream/version/1.0.0"
+const ProtocolID = "/multistream/1.0.0"
 
 type HandlerFunc func(io.ReadWriteCloser) error
 
