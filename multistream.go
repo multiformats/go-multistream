@@ -34,7 +34,7 @@ func writeUvarint(w io.Writer, i uint64) error {
 }
 
 func delimWrite(w io.Writer, mes []byte) error {
-	err := writeUvarint(w, uint64(len(mes)))
+	err := writeUvarint(w, uint64(len(mes)+1))
 	if err != nil {
 		return err
 	}
@@ -131,14 +131,12 @@ func ReadNextToken(rw io.ReadWriter) (string, error) {
 		return "", err
 	}
 
-	nline, err := br.ReadByte()
-	if err != nil {
-		return "", err
+	if len(buf) == 0 || buf[length-1] != '\n' {
+		return "", errors.New("message did not have trailing newline")
 	}
 
-	if nline != '\n' {
-		panic("oh my god oh my god oh my god oh my god")
-	}
+	// slice off the trailing newline
+	buf = buf[:length-1]
 
 	return string(buf), nil
 }
