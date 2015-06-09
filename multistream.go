@@ -64,6 +64,16 @@ func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
 		return err
 	}
 
+	line, err := ReadNextToken(rwc)
+	if err != nil {
+		return err
+	}
+
+	if line != ProtocolID {
+		rwc.Close()
+		return errors.New("client connected with incorrect version")
+	}
+
 loop:
 	for {
 		// Now read and respond to commands until they send a valid protocol id
