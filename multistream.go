@@ -57,21 +57,37 @@ func (msm *MultistreamMuxer) AddHandler(protocol string, handler HandlerFunc) {
 	msm.handlerlock.Unlock()
 }
 
-func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
+func (msm *MultistreamMuxer) RemoveHandler(protocol string) {
+	msm.handlerlock.Lock()
+	delete(msm.handlers, protocol)
+	msm.handlerlock.Unlock()
+}
+
+func (msm *MultistreamMuxer) Protocols() []string {
+	var out []string
+	msm.handlerlock.Lock()
+	for k, _ := range msm.handlers {
+		out = append(out, k)
+	}
+	msm.handlerlock.Unlock()
+	return out
+}
+
+func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (string, HandlerFunc, error) {
 	// Send our protocol ID
 	err := delimWrite(rwc, []byte(ProtocolID))
 	if err != nil {
-		return err
+		return "", nil, err
 	}
 
 	line, err := ReadNextToken(rwc)
 	if err != nil {
-		return err
+		return "", nil, err
 	}
 
 	if line != ProtocolID {
 		rwc.Close()
-		return errors.New("client connected with incorrect version")
+		return "", nil, errors.New("client connected with incorrect version")
 	}
 
 loop:
@@ -79,7 +95,7 @@ loop:
 		// Now read and respond to commands until they send a valid protocol id
 		tok, err := ReadNextToken(rwc)
 		if err != nil {
-			return err
+			return "", nil, err
 		}
 
 		switch tok {
@@ -90,13 +106,13 @@ loop:
 				err := delimWrite(buf, []byte(proto))
 				if err != nil {
 					msm.handlerlock.Unlock()
-					return err
+					return "", nil, err
 				}
 			}
 			msm.handlerlock.Unlock()
 			err := delimWrite(rwc, buf.Bytes())
 			if err != nil {
-				return err
+				return "", nil, err
 			}
 		default:
 			msm.handlerlock.Lock()
@@ -105,19 +121,29 @@ loop:
 			if !ok {
 				err := delimWrite(rwc, []byte("na"))
 				if err != nil {
-					return err
+					return "", nil, err
 				}
 				continue loop
 			}
 
 			err := delimWrite(rwc, []byte(tok))
 			if err != nil {
-				return err
+				return "", nil, err
 			}
+
 			// hand off processing to the sub-protocol handler
-			return h(rwc)
+			return tok, h, nil
 		}
 	}
+
+}
+
+func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
+	_, h, err := msm.Negotiate(rwc)
+	if err != nil {
+		return err
+	}
+	return h(rwc)
 }
 
 func ReadNextToken(rw io.ReadWriter) (string, error) {
