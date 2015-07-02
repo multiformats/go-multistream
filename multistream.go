@@ -10,7 +10,7 @@ import (
 
 var ErrTooLarge = errors.New("incoming message was too large")
 
-const ProtocolID = "/multistream/version1.0.0"
+const ProtocolID = "/multistream/1.0.0"
 
 type HandlerFunc func(io.ReadWriteCloser) error
 
