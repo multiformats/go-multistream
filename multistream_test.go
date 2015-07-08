@@ -118,6 +118,20 @@ func TestSelectOneAndWrite(t *testing.T) {
 	verifyPipe(t, a, b)
 }
 
+func TestLazyConns(t *testing.T) {
+	a, b := net.Pipe()
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+	mux.AddHandler("/b", nil)
+	mux.AddHandler("/c", nil)
+
+	la := NewLazyHandshakeConn(a, "/c")
+	lb := NewLazyHandshakeConn(b, "/c")
+
+	verifyPipe(t, la, lb)
+}
+
 func verifyPipe(t *testing.T, a, b io.ReadWriter) {
 	mes := make([]byte, 1024)
 	rand.Read(mes)
