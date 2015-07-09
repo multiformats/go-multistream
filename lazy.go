@@ -18,15 +18,21 @@ type lazyConn struct {
 
 	rhlock sync.Mutex
 	rhsync bool //protected by mutex
-	err    error
+	rerr   error
 
 	whandshake bool
-	proto      string
-	con        io.ReadWriteCloser
+
+	whlock sync.Mutex
+	whsync bool
+	werr   error
+
+	proto string
+	con   io.ReadWriteCloser
 }
 
 func (l *lazyConn) Read(b []byte) (int, error) {
 	if !l.rhandshake {
+		go l.writeHandshake()
 		err := l.readHandshake()
 		if err != nil {
 			return 0, err
@@ -48,32 +54,57 @@ func (l *lazyConn) readHandshake() error {
 
 	// if we've already done this, exit
 	if l.rhsync {
-		return l.err
+		return l.rerr
 	}
 	l.rhsync = true
 
 	// read multistream version
 	tok, err := ReadNextToken(l.con)
 	if err != nil {
-		l.err = err
+		l.rerr = err
 		return err
 	}
 
 	if tok != ProtocolID {
-		l.err = fmt.Errorf("multistream protocol mismatch ( %s != %s )", tok, ProtocolID)
-		return l.err
+		l.rerr = fmt.Errorf("multistream protocol mismatch ( %s != %s )", tok, ProtocolID)
+		return l.rerr
 	}
 
 	// read protocol
 	tok, err = ReadNextToken(l.con)
 	if err != nil {
-		l.err = err
+		l.rerr = err
 		return err
 	}
 
 	if tok != l.proto {
-		l.err = fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", tok, l.proto)
-		return l.err
+		l.rerr = fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", tok, l.proto)
+		return l.rerr
+	}
+
+	return nil
+}
+
+func (l *lazyConn) writeHandshake() error {
+	l.whlock.Lock()
+	defer l.whlock.Unlock()
+
+	if l.whsync {
+		return l.werr
+	}
+
+	l.whsync = true
+
+	err := delimWrite(l.con, []byte(ProtocolID))
+	if err != nil {
+		l.werr = err
+		return err
+	}
+
+	err = delimWrite(l.con, []byte(l.proto))
+	if err != nil {
+		l.werr = err
+		return err
 	}
 
 	return nil
@@ -82,12 +113,7 @@ func (l *lazyConn) readHandshake() error {
 func (l *lazyConn) Write(b []byte) (int, error) {
 	if !l.whandshake {
 		go l.readHandshake()
-		err := delimWrite(l.con, []byte(ProtocolID))
-		if err != nil {
-			return 0, err
-		}
-
-		err = delimWrite(l.con, []byte(l.proto))
+		err := l.writeHandshake()
 		if err != nil {
 			return 0, err
 		}
