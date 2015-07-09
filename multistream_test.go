@@ -132,6 +132,68 @@ func TestLazyConns(t *testing.T) {
 	verifyPipe(t, la, lb)
 }
 
+func TestLazyAndMux(t *testing.T) {
+	a, b := net.Pipe()
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+	mux.AddHandler("/b", nil)
+	mux.AddHandler("/c", nil)
+
+	done := make(chan struct{})
+	go func() {
+		selected, _, err := mux.Negotiate(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if selected != "/c" {
+			t.Fatal("incorrect protocol selected")
+		}
+
+		msg := make([]byte, 5)
+		_, err = a.Read(msg)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		close(done)
+	}()
+
+	lb := NewLazyHandshakeConn(b, "/c")
+
+	// since theres no buffering on the net.Pipe, we have to start a read
+	// here to make the handshake progress
+	rhdone := make(chan struct{})
+	go func() {
+		_, err := lb.Read([]byte{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		close(rhdone)
+	}()
+
+	// do a write to push the handshake through
+	_, err := lb.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("failed to complete in time")
+	case <-done:
+	}
+
+	select {
+	case <-time.After(time.Second):
+		panic("blah")
+		t.Fatal("failed to complete in time")
+	case <-rhdone:
+	}
+
+	verifyPipe(t, a, lb)
+}
+
 func verifyPipe(t *testing.T, a, b io.ReadWriter) {
 	mes := make([]byte, 1024)
 	rand.Read(mes)
