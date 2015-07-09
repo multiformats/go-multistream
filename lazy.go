@@ -3,6 +3,7 @@ package multistream
 import (
 	"fmt"
 	"io"
+	"sync"
 )
 
 func NewLazyHandshakeConn(c io.ReadWriteCloser, proto string) io.ReadWriteCloser {
@@ -13,7 +14,12 @@ func NewLazyHandshakeConn(c io.ReadWriteCloser, proto string) io.ReadWriteCloser
 }
 
 type lazyConn struct {
-	rhandshake bool
+	rhandshake bool // only accessed by 'Read' should not call read async
+
+	rhlock sync.Mutex
+	rhsync bool //protected by mutex
+	err    error
+
 	whandshake bool
 	proto      string
 	con        io.ReadWriteCloser
@@ -21,24 +27,9 @@ type lazyConn struct {
 
 func (l *lazyConn) Read(b []byte) (int, error) {
 	if !l.rhandshake {
-		// read multistream version
-		tok, err := ReadNextToken(l.con)
+		err := l.readHandshake()
 		if err != nil {
 			return 0, err
-		}
-
-		if tok != ProtocolID {
-			return 0, fmt.Errorf("multistream protocol mismatch ( %s != %s )", tok, ProtocolID)
-		}
-
-		// read protocol
-		tok, err = ReadNextToken(l.con)
-		if err != nil {
-			return 0, err
-		}
-
-		if tok != l.proto {
-			return 0, fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", tok, l.proto)
 		}
 
 		l.rhandshake = true
@@ -51,8 +42,46 @@ func (l *lazyConn) Read(b []byte) (int, error) {
 	return l.con.Read(b)
 }
 
+func (l *lazyConn) readHandshake() error {
+	l.rhlock.Lock()
+	defer l.rhlock.Unlock()
+
+	// if we've already done this, exit
+	if l.rhsync {
+		return l.err
+	}
+	l.rhsync = true
+
+	// read multistream version
+	tok, err := ReadNextToken(l.con)
+	if err != nil {
+		l.err = err
+		return err
+	}
+
+	if tok != ProtocolID {
+		l.err = fmt.Errorf("multistream protocol mismatch ( %s != %s )", tok, ProtocolID)
+		return l.err
+	}
+
+	// read protocol
+	tok, err = ReadNextToken(l.con)
+	if err != nil {
+		l.err = err
+		return err
+	}
+
+	if tok != l.proto {
+		l.err = fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", tok, l.proto)
+		return l.err
+	}
+
+	return nil
+}
+
 func (l *lazyConn) Write(b []byte) (int, error) {
 	if !l.whandshake {
+		go l.readHandshake()
 		err := delimWrite(l.con, []byte(ProtocolID))
 		if err != nil {
 			return 0, err
