@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"io"
 	"net"
+	"sort"
 	"testing"
 	"time"
 )
@@ -20,10 +21,10 @@ func TestProtocolNegotiation(t *testing.T) {
 	go func() {
 		selected, _, err := mux.Negotiate(a)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if selected != "/a" {
-			t.Fatal("incorrect protocol selected")
+			t.Error("incorrect protocol selected")
 		}
 		close(done)
 	}()
@@ -54,10 +55,10 @@ func TestSelectOne(t *testing.T) {
 	go func() {
 		selected, _, err := mux.Negotiate(a)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if selected != "/c" {
-			t.Fatal("incorrect protocol selected")
+			t.Error("incorrect protocol selected")
 		}
 		close(done)
 	}()
@@ -80,6 +81,43 @@ func TestSelectOne(t *testing.T) {
 	verifyPipe(t, a, b)
 }
 
+func TestSelectFails(t *testing.T) {
+	a, b := net.Pipe()
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+	mux.AddHandler("/b", nil)
+	mux.AddHandler("/c", nil)
+
+	go mux.Negotiate(a)
+
+	_, err := SelectOneOf([]string{"/d", "/e"}, b)
+	if err != ErrNotSupported {
+		t.Fatal("expected to not be supported")
+	}
+}
+
+func TestRemoveProtocol(t *testing.T) {
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+	mux.AddHandler("/b", nil)
+	mux.AddHandler("/c", nil)
+
+	protos := mux.Protocols()
+	sort.Strings(protos)
+	if protos[0] != "/a" || protos[1] != "/b" || protos[2] != "/c" {
+		t.Fatal("didnt get expected protocols")
+	}
+
+	mux.RemoveHandler("/b")
+
+	protos = mux.Protocols()
+	sort.Strings(protos)
+	if protos[0] != "/a" || protos[1] != "/c" {
+		t.Fatal("didnt get expected protocols")
+	}
+}
+
 func TestSelectOneAndWrite(t *testing.T) {
 	a, b := net.Pipe()
 
@@ -92,10 +130,10 @@ func TestSelectOneAndWrite(t *testing.T) {
 	go func() {
 		selected, _, err := mux.Negotiate(a)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if selected != "/c" {
-			t.Fatal("incorrect protocol selected")
+			t.Error("incorrect protocol selected")
 		}
 		close(done)
 	}()
@@ -144,16 +182,16 @@ func TestLazyAndMux(t *testing.T) {
 	go func() {
 		selected, _, err := mux.Negotiate(a)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if selected != "/c" {
-			t.Fatal("incorrect protocol selected")
+			t.Error("incorrect protocol selected")
 		}
 
 		msg := make([]byte, 5)
 		_, err = a.Read(msg)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 
 		close(done)
@@ -188,15 +226,15 @@ func TestLazyAndMuxWrite(t *testing.T) {
 	go func() {
 		selected, _, err := mux.Negotiate(a)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if selected != "/c" {
-			t.Fatal("incorrect protocol selected")
+			t.Error("incorrect protocol selected")
 		}
 
 		_, err = a.Write([]byte("hello"))
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 
 		close(done)
