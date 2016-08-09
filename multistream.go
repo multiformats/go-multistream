@@ -12,7 +12,7 @@ var ErrTooLarge = errors.New("incoming message was too large")
 
 const ProtocolID = "/multistream/1.0.0"
 
-type HandlerFunc func(io.ReadWriteCloser) error
+type HandlerFunc func(string, io.ReadWriteCloser) error
 
 type MultistreamMuxer struct {
 	handlerlock sync.Mutex
@@ -147,11 +147,11 @@ func (msm *MultistreamMuxer) Ls(rwc io.Writer) error {
 }
 
 func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
-	_, h, err := msm.Negotiate(rwc)
+	p, h, err := msm.Negotiate(rwc)
 	if err != nil {
 		return err
 	}
-	return h(rwc)
+	return h(p, rwc)
 }
 
 func ReadNextToken(rw io.ReadWriter) (string, error) {
