@@ -214,6 +214,34 @@ func TestLazyAndMux(t *testing.T) {
 	verifyPipe(t, a, lb)
 }
 
+func TestHandleFunc(t *testing.T) {
+	a, b := net.Pipe()
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+	mux.AddHandler("/b", nil)
+	mux.AddHandler("/c", func(p string, rwc io.ReadWriteCloser) error {
+		if p != "/c" {
+			t.Error("failed to get expected protocol!")
+		}
+		return nil
+	})
+
+	go func() {
+		err := SelectProtoOrFail("/c", a)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err := mux.Handle(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyPipe(t, a, b)
+}
+
 func TestLazyAndMuxWrite(t *testing.T) {
 	a, b := net.Pipe()
 
