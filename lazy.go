@@ -96,7 +96,7 @@ func (l *lazyConn) writeHandshake() error {
 
 	l.whsync = true
 
-	err := delimWrite(l.con, []byte(l.proto))
+	err := delimWriteBuffered(l.con, []byte(l.proto))
 	if err != nil {
 		l.werr = err
 		return err

@@ -1,6 +1,7 @@
 package multistream
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -31,6 +32,16 @@ func writeUvarint(w io.Writer, i uint64) error {
 		return err
 	}
 	return nil
+}
+
+func delimWriteBuffered(w io.Writer, mes []byte) error {
+	bw := bufio.NewWriter(w)
+	err := delimWrite(bw, mes)
+	if err != nil {
+		return err
+	}
+
+	return bw.Flush()
 }
 
 func delimWrite(w io.Writer, mes []byte) error {
@@ -75,7 +86,7 @@ func (msm *MultistreamMuxer) Protocols() []string {
 
 func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (string, HandlerFunc, error) {
 	// Send our protocol ID
-	err := delimWrite(rwc, []byte(ProtocolID))
+	err := delimWriteBuffered(rwc, []byte(ProtocolID))
 	if err != nil {
 		return "", nil, err
 	}
@@ -109,14 +120,14 @@ loop:
 			h, ok := msm.handlers[tok]
 			msm.handlerlock.Unlock()
 			if !ok {
-				err := delimWrite(rwc, []byte("na"))
+				err := delimWriteBuffered(rwc, []byte("na"))
 				if err != nil {
 					return "", nil, err
 				}
 				continue loop
 			}
 
-			err := delimWrite(rwc, []byte(tok))
+			err := delimWriteBuffered(rwc, []byte(tok))
 			if err != nil {
 				return "", nil, err
 			}
@@ -162,7 +173,7 @@ func ReadNextToken(rw io.ReadWriter) (string, error) {
 	}
 
 	if length > 64*1024 {
-		err := delimWrite(rw, []byte("messages over 64k are not allowed"))
+		err := delimWriteBuffered(rw, []byte("messages over 64k are not allowed"))
 		if err != nil {
 			return "", err
 		}
