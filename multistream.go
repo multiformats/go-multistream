@@ -84,6 +84,8 @@ func (msm *MultistreamMuxer) Protocols() []string {
 	return out
 }
 
+var ErrIncorrectVersion = errors.New("client connected with incorrect version")
+
 func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (string, HandlerFunc, error) {
 	// Send our protocol ID
 	err := delimWriteBuffered(rwc, []byte(ProtocolID))
@@ -98,7 +100,7 @@ func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (string, HandlerF
 
 	if line != ProtocolID {
 		rwc.Close()
-		return "", nil, errors.New("client connected with incorrect version")
+		return "", nil, ErrIncorrectVersion
 	}
 
 loop:

@@ -43,6 +43,32 @@ func TestProtocolNegotiation(t *testing.T) {
 	verifyPipe(t, a, b)
 }
 
+func TestInvalidProtocol(t *testing.T) {
+	a, b := net.Pipe()
+
+	mux := NewMultistreamMuxer()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, err := mux.Negotiate(a)
+		if err != ErrIncorrectVersion {
+			t.Fatal("expected incorrect version error here")
+		}
+	}()
+
+	ms := NewMultistream(b, "/THIS_IS_WRONG")
+	_, err := ms.Write(nil)
+	if err == nil {
+		t.Fatal("this write should not succeed")
+	}
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("protocol negotiation didnt complete")
+	case <-done:
+	}
+}
+
 func TestSelectOne(t *testing.T) {
 	a, b := net.Pipe()
 
