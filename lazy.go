@@ -1,6 +1,7 @@
 package multistream
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"sync"
@@ -8,17 +9,19 @@ import (
 
 type Multistream interface {
 	io.ReadWriteCloser
-	Protocol() string
 }
 
 func NewMSSelect(c io.ReadWriteCloser, proto string) Multistream {
-	return NewMultistream(NewMultistream(c, ProtocolID), proto)
+	return &lazyConn{
+		protos: []string{ProtocolID, proto},
+		con:    c,
+	}
 }
 
 func NewMultistream(c io.ReadWriteCloser, proto string) Multistream {
 	return &lazyConn{
-		proto: proto,
-		con:   c,
+		protos: []string{proto},
+		con:    c,
 	}
 }
 
@@ -35,12 +38,8 @@ type lazyConn struct {
 	whsync bool
 	werr   error
 
-	proto string
-	con   io.ReadWriteCloser
-}
-
-func (l *lazyConn) Protocol() string {
-	return l.proto
+	protos []string
+	con    io.ReadWriteCloser
 }
 
 func (l *lazyConn) Read(b []byte) (int, error) {
@@ -71,16 +70,18 @@ func (l *lazyConn) readHandshake() error {
 	}
 	l.rhsync = true
 
-	// read protocol
-	tok, err := ReadNextToken(l.con)
-	if err != nil {
-		l.rerr = err
-		return err
-	}
+	for _, proto := range l.protos {
+		// read protocol
+		tok, err := ReadNextToken(l.con)
+		if err != nil {
+			l.rerr = err
+			return err
+		}
 
-	if tok != l.proto {
-		l.rerr = fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", tok, l.proto)
-		return l.rerr
+		if tok != proto {
+			l.rerr = fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", tok, proto)
+			return l.rerr
+		}
 	}
 
 	return nil
@@ -96,13 +97,17 @@ func (l *lazyConn) writeHandshake() error {
 
 	l.whsync = true
 
-	err := delimWriteBuffered(l.con, []byte(l.proto))
-	if err != nil {
-		l.werr = err
-		return err
+	buf := bufio.NewWriter(l.con)
+	for _, proto := range l.protos {
+		err := delimWrite(buf, []byte(proto))
+		if err != nil {
+			l.werr = err
+			return err
+		}
 	}
 
-	return nil
+	l.werr = buf.Flush()
+	return l.werr
 }
 
 func (l *lazyConn) Write(b []byte) (int, error) {

@@ -1,6 +1,7 @@
 package multistream
 
 import (
+	"bytes"
 	"crypto/rand"
 	"io"
 	"net"
@@ -347,5 +348,20 @@ func verifyPipe(t *testing.T, a, b io.ReadWriter) {
 
 	if string(buf) != string(mes) {
 		t.Fatal("somehow read wrong message")
+	}
+}
+
+func TestTooLargeMessage(t *testing.T) {
+	buf := new(bytes.Buffer)
+	mes := make([]byte, 100*1024)
+
+	err := delimWrite(buf, mes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = ReadNextToken(buf)
+	if err == nil {
+		t.Fatal("should have failed to read message larger than 64k")
 	}
 }
