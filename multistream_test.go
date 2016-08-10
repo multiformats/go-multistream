@@ -3,6 +3,7 @@ package multistream
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"io"
 	"net"
 	"sort"
@@ -363,5 +364,63 @@ func TestTooLargeMessage(t *testing.T) {
 	_, err = ReadNextToken(buf)
 	if err == nil {
 		t.Fatal("should have failed to read message larger than 64k")
+	}
+}
+
+func TestLs(t *testing.T) {
+	// TODO: in go1.7, use subtests (t.Run(....) )
+	subtestLs(nil)(t)
+	subtestLs([]string{"a"})(t)
+	subtestLs([]string{"a", "b", "c", "d", "e"})(t)
+	subtestLs([]string{"", "a"})(t)
+}
+
+func subtestLs(protos []string) func(*testing.T) {
+	return func(t *testing.T) {
+		mr := NewMultistreamMuxer()
+		mset := make(map[string]bool)
+		for _, p := range protos {
+			mr.AddHandler(p, nil)
+			mset[p] = true
+		}
+
+		buf := new(bytes.Buffer)
+		err := mr.Ls(buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		n, err := binary.ReadUvarint(buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if int(n) != buf.Len() {
+			t.Fatal("length wasnt properly prefixed")
+		}
+
+		nitems, err := binary.ReadUvarint(buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if int(nitems) != len(protos) {
+			t.Fatal("got wrong number of protocols")
+		}
+
+		for i := 0; i < int(nitems); i++ {
+			tok, err := ReadNextToken(buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !mset[tok] {
+				t.Fatalf("wasnt expecting protocol %s", tok)
+			}
+		}
+
+		if buf.Len() != 0 {
+			t.Fatal("got leftover data in buffer")
+		}
 	}
 }

@@ -25,7 +25,7 @@ func NewMultistreamMuxer() *MultistreamMuxer {
 }
 
 func writeUvarint(w io.Writer, i uint64) error {
-	varintbuf := make([]byte, 32)
+	varintbuf := make([]byte, 16)
 	n := binary.PutUvarint(varintbuf, i)
 	_, err := w.Write(varintbuf[:n])
 	if err != nil {
@@ -141,9 +141,14 @@ loop:
 
 }
 
-func (msm *MultistreamMuxer) Ls(rwc io.Writer) error {
+func (msm *MultistreamMuxer) Ls(w io.Writer) error {
 	buf := new(bytes.Buffer)
 	msm.handlerlock.Lock()
+	err := writeUvarint(buf, uint64(len(msm.handlers)))
+	if err != nil {
+		return err
+	}
+
 	for proto, _ := range msm.handlers {
 		err := delimWrite(buf, []byte(proto))
 		if err != nil {
@@ -152,11 +157,13 @@ func (msm *MultistreamMuxer) Ls(rwc io.Writer) error {
 		}
 	}
 	msm.handlerlock.Unlock()
-	err := delimWrite(rwc, buf.Bytes())
-	if err != nil {
-		return err
-	}
-	return nil
+	ll := make([]byte, 16)
+	nw := binary.PutUvarint(ll, uint64(buf.Len()))
+
+	r := io.MultiReader(bytes.NewReader(ll[:nw]), buf)
+
+	_, err = io.Copy(w, r)
+	return err
 }
 
 func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
