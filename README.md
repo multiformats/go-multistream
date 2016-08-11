@@ -1,3 +1,5 @@
+[![Coverage Status](https://coveralls.io/repos/github/multiformats/go-multistream/badge.svg?branch=master)](https://coveralls.io/github/multiformats/go-multistream?branch=master)
+
 #Multistream-select router
 This package implements a simple stream router for the multistream-select protocol.
 The protocol is defined [here](https://github.com/jbenet/multistream).
