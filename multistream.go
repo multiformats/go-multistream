@@ -15,13 +15,19 @@ const ProtocolID = "/multistream/1.0.0"
 
 type HandlerFunc func(string, io.ReadWriteCloser) error
 
+type Handler struct {
+	MatchFunc func(string) bool
+	Handle    HandlerFunc
+	AddName   string
+}
+
 type MultistreamMuxer struct {
 	handlerlock sync.Mutex
-	handlers    map[string]HandlerFunc
+	handlers    []Handler
 }
 
 func NewMultistreamMuxer() *MultistreamMuxer {
-	return &MultistreamMuxer{handlers: make(map[string]HandlerFunc)}
+	return new(MultistreamMuxer)
 }
 
 func writeUvarint(w io.Writer, i uint64) error {
@@ -62,29 +68,68 @@ func delimWrite(w io.Writer, mes []byte) error {
 	return nil
 }
 
+func fulltextMatch(s string) func(string) bool {
+	return func(a string) bool {
+		return a == s
+	}
+}
+
 func (msm *MultistreamMuxer) AddHandler(protocol string, handler HandlerFunc) {
 	msm.handlerlock.Lock()
-	msm.handlers[protocol] = handler
+	msm.handlers = append(msm.handlers, Handler{
+		MatchFunc: fulltextMatch(protocol),
+		Handle:    handler,
+		AddName:   protocol,
+	})
+	msm.handlerlock.Unlock()
+}
+
+func (msm *MultistreamMuxer) AddHandlerWithFunc(protocol string, match func(string) bool, handler HandlerFunc) {
+	msm.handlerlock.Lock()
+	msm.handlers = append(msm.handlers, Handler{
+		MatchFunc: fulltextMatch(protocol),
+		Handle:    handler,
+		AddName:   protocol,
+	})
 	msm.handlerlock.Unlock()
 }
 
 func (msm *MultistreamMuxer) RemoveHandler(protocol string) {
 	msm.handlerlock.Lock()
-	delete(msm.handlers, protocol)
-	msm.handlerlock.Unlock()
+	defer msm.handlerlock.Unlock()
+
+	for i, h := range msm.handlers {
+		if h.AddName == protocol {
+			msm.handlers = append(msm.handlers[:i], msm.handlers[i+1:]...)
+			return
+		}
+	}
 }
 
 func (msm *MultistreamMuxer) Protocols() []string {
 	var out []string
 	msm.handlerlock.Lock()
-	for k, _ := range msm.handlers {
-		out = append(out, k)
+	for _, h := range msm.handlers {
+		out = append(out, h.AddName)
 	}
 	msm.handlerlock.Unlock()
 	return out
 }
 
 var ErrIncorrectVersion = errors.New("client connected with incorrect version")
+
+func (msm *MultistreamMuxer) findHandler(proto string) *Handler {
+	msm.handlerlock.Lock()
+	defer msm.handlerlock.Unlock()
+
+	for _, h := range msm.handlers {
+		if h.MatchFunc(proto) {
+			return &h
+		}
+	}
+
+	return nil
+}
 
 func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (string, HandlerFunc, error) {
 	// Send our protocol ID
@@ -118,10 +163,8 @@ loop:
 				return "", nil, err
 			}
 		default:
-			msm.handlerlock.Lock()
-			h, ok := msm.handlers[tok]
-			msm.handlerlock.Unlock()
-			if !ok {
+			h := msm.findHandler(tok)
+			if h == nil {
 				err := delimWriteBuffered(rwc, []byte("na"))
 				if err != nil {
 					return "", nil, err
@@ -135,7 +178,7 @@ loop:
 			}
 
 			// hand off processing to the sub-protocol handler
-			return tok, h, nil
+			return tok, h.Handle, nil
 		}
 	}
 
@@ -149,8 +192,8 @@ func (msm *MultistreamMuxer) Ls(w io.Writer) error {
 		return err
 	}
 
-	for proto, _ := range msm.handlers {
-		err := delimWrite(buf, []byte(proto))
+	for _, h := range msm.handlers {
+		err := delimWrite(buf, []byte(h.AddName))
 		if err != nil {
 			msm.handlerlock.Unlock()
 			return err
