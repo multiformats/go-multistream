@@ -270,6 +270,34 @@ func TestHandleFunc(t *testing.T) {
 	verifyPipe(t, a, b)
 }
 
+func TestAddHandlerOverride(t *testing.T) {
+	a, b := net.Pipe()
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/foo", func(p string, rwc io.ReadWriteCloser) error {
+		t.Error("shouldnt execute this handler")
+		return nil
+	})
+
+	mux.AddHandler("/foo", func(p string, rwc io.ReadWriteCloser) error {
+		return nil
+	})
+
+	go func() {
+		err := SelectProtoOrFail("/foo", a)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	err := mux.Handle(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyPipe(t, a, b)
+}
+
 func TestLazyAndMuxWrite(t *testing.T) {
 	a, b := net.Pipe()
 

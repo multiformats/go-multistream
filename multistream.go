@@ -75,17 +75,12 @@ func fulltextMatch(s string) func(string) bool {
 }
 
 func (msm *MultistreamMuxer) AddHandler(protocol string, handler HandlerFunc) {
-	msm.handlerlock.Lock()
-	msm.handlers = append(msm.handlers, Handler{
-		MatchFunc: fulltextMatch(protocol),
-		Handle:    handler,
-		AddName:   protocol,
-	})
-	msm.handlerlock.Unlock()
+	msm.AddHandlerWithFunc(protocol, fulltextMatch(protocol), handler)
 }
 
 func (msm *MultistreamMuxer) AddHandlerWithFunc(protocol string, match func(string) bool, handler HandlerFunc) {
 	msm.handlerlock.Lock()
+	msm.removeHandler(protocol)
 	msm.handlers = append(msm.handlers, Handler{
 		MatchFunc: fulltextMatch(protocol),
 		Handle:    handler,
@@ -98,6 +93,10 @@ func (msm *MultistreamMuxer) RemoveHandler(protocol string) {
 	msm.handlerlock.Lock()
 	defer msm.handlerlock.Unlock()
 
+	msm.removeHandler(protocol)
+}
+
+func (msm *MultistreamMuxer) removeHandler(protocol string) {
 	for i, h := range msm.handlers {
 		if h.AddName == protocol {
 			msm.handlers = append(msm.handlers[:i], msm.handlers[i+1:]...)
