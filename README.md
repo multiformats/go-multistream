@@ -2,7 +2,7 @@
 
 #Multistream-select router
 This package implements a simple stream router for the multistream-select protocol.
-The protocol is defined [here](https://github.com/jbenet/multistream).
+The protocol is defined [here](https://github.com/multiformats/multistream-select).
 
 
 Usage:
