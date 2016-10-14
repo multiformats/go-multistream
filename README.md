@@ -22,7 +22,7 @@ The protocol is defined [here](https://github.com/multiformats/multistream-selec
 ## Install
 
 ```sh
-go get multiformats/go-multistream
+go get github.com/multiformats/go-multistream
 ```
 
 ## Usage
