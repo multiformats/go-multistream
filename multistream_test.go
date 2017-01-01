@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"sort"
@@ -43,6 +44,42 @@ func TestProtocolNegotiation(t *testing.T) {
 	}
 
 	verifyPipe(t, a, b)
+}
+
+func TestProtocolNegotiationLazy(t *testing.T) {
+	a, b := net.Pipe()
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+	mux.AddHandler("/b", nil)
+	mux.AddHandler("/c", nil)
+
+	var ac Multistream
+	done := make(chan struct{})
+	go func() {
+		m, selected, _, err := mux.NegotiateLazy(a)
+		if err != nil {
+			t.Error(err)
+		}
+		if selected != "/a" {
+			t.Error("incorrect protocol selected")
+		}
+		ac = m
+		close(done)
+	}()
+
+	err := SelectProtoOrFail("/a", b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("protocol negotiation didnt complete")
+	case <-done:
+	}
+
+	verifyPipe(t, ac, b)
 }
 
 func TestInvalidProtocol(t *testing.T) {
@@ -427,28 +464,68 @@ func subtestLs(protos []string) func(*testing.T) {
 			t.Fatal("length wasnt properly prefixed")
 		}
 
-		nitems, err := binary.ReadUvarint(buf)
+		items, err := Ls(buf)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if int(nitems) != len(protos) {
+		if len(items) != len(protos) {
 			t.Fatal("got wrong number of protocols")
 		}
 
-		for i := 0; i < int(nitems); i++ {
-			tok, err := ReadNextToken(buf)
-			if err != nil {
-				t.Fatal(err)
-			}
-
+		for _, tok := range items {
 			if !mset[tok] {
 				t.Fatalf("wasnt expecting protocol %s", tok)
 			}
 		}
+	}
+}
 
-		if buf.Len() != 0 {
-			t.Fatal("got leftover data in buffer")
-		}
+type readonlyBuffer struct {
+	buf io.Reader
+}
+
+func (rob *readonlyBuffer) Read(b []byte) (int, error) {
+	return rob.buf.Read(b)
+}
+
+func (rob *readonlyBuffer) Write(b []byte) (int, error) {
+	return 0, fmt.Errorf("cannot write on this pipe")
+}
+
+func (rob *readonlyBuffer) Close() error {
+	return nil
+}
+
+func TestNegotiateFail(t *testing.T) {
+	buf := new(bytes.Buffer)
+
+	err := delimWrite(buf, []byte(ProtocolID))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = delimWrite(buf, []byte("foo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("foo", nil)
+
+	rob := &readonlyBuffer{bytes.NewReader(buf.Bytes())}
+	_, _, err = mux.Negotiate(rob)
+	if err == nil {
+		t.Fatal("normal negotiate should fail here")
+	}
+
+	rob = &readonlyBuffer{bytes.NewReader(buf.Bytes())}
+	_, out, _, err := mux.NegotiateLazy(rob)
+	if err != nil {
+		t.Fatal("expected lazy negoatiate to succeed")
+	}
+
+	if out != "foo" {
+		t.Fatal("got wrong protocol")
 	}
 }

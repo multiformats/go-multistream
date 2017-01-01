@@ -68,6 +68,29 @@ func delimWrite(w io.Writer, mes []byte) error {
 	return nil
 }
 
+func Ls(rw io.ReadWriter) ([]string, error) {
+	err := delimWriteBuffered(rw, []byte("ls"))
+	if err != nil {
+		return nil, err
+	}
+
+	n, err := binary.ReadUvarint(&byteReader{rw})
+	if err != nil {
+		return nil, err
+	}
+
+	var out []string
+	for i := uint64(0); i < n; i++ {
+		val, err := lpReadBuf(rw)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, string(val))
+	}
+
+	return out, nil
+}
+
 func fulltextMatch(s string) func(string) bool {
 	return func(a string) bool {
 		return a == s
@@ -128,6 +151,85 @@ func (msm *MultistreamMuxer) findHandler(proto string) *Handler {
 	}
 
 	return nil
+}
+
+func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (Multistream, string, HandlerFunc, error) {
+	pval := make(chan string, 1)
+	writeErr := make(chan error, 1)
+	defer close(pval)
+
+	lzc := &lazyConn{
+		con:        rwc,
+		rhandshake: true,
+	}
+
+	go func() {
+		defer close(writeErr)
+		lzc.whlock.Lock()
+		defer lzc.whlock.Unlock()
+		lzc.whsync = true
+
+		if err := delimWriteBuffered(rwc, []byte(ProtocolID)); err != nil {
+			lzc.werr = err
+			writeErr <- err
+			return
+		}
+
+		for proto := range pval {
+			if err := delimWriteBuffered(rwc, []byte(proto)); err != nil {
+				lzc.werr = err
+				writeErr <- err
+				return
+			}
+		}
+	}()
+
+	line, err := ReadNextToken(rwc)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if line != ProtocolID {
+		rwc.Close()
+		return nil, "", nil, ErrIncorrectVersion
+	}
+
+loop:
+	for {
+		// Now read and respond to commands until they send a valid protocol id
+		tok, err := ReadNextToken(rwc)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		switch tok {
+		case "ls":
+			select {
+			case pval <- "ls":
+			case err := <-writeErr:
+				return nil, "", nil, err
+			}
+		default:
+			h := msm.findHandler(tok)
+			if h == nil {
+				select {
+				case pval <- "na":
+				case err := <-writeErr:
+					return nil, "", nil, err
+				}
+				continue loop
+			}
+
+			select {
+			case pval <- tok:
+			case err := <-writeErr:
+				return nil, "", nil, err
+			}
+
+			// hand off processing to the sub-protocol handler
+			return lzc, tok, h.Handle, nil
+		}
+	}
 }
 
 func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (string, HandlerFunc, error) {
@@ -217,34 +319,67 @@ func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
 }
 
 func ReadNextToken(rw io.ReadWriter) (string, error) {
-	br := &byteReader{rw}
-	length, err := binary.ReadUvarint(br)
+	tok, err := ReadNextTokenBytes(rw)
 	if err != nil {
 		return "", err
+	}
+
+	return string(tok), nil
+}
+
+func ReadNextTokenBytes(rw io.ReadWriter) ([]byte, error) {
+	data, err := lpReadBuf(rw)
+	switch err {
+	case nil:
+		return data, nil
+	case ErrTooLarge:
+		err := delimWriteBuffered(rw, []byte("messages over 64k are not allowed"))
+		if err != nil {
+			return nil, err
+		}
+		return nil, ErrTooLarge
+	default:
+		return nil, err
+	}
+}
+
+func lpReadBuf(r io.Reader) ([]byte, error) {
+	var br byteReaderIface
+	if mbr, ok := r.(byteReaderIface); ok {
+		br = mbr
+	} else {
+		br = &byteReader{r}
+	}
+
+	length, err := binary.ReadUvarint(br)
+	if err != nil {
+		return nil, err
 	}
 
 	if length > 64*1024 {
-		err := delimWriteBuffered(rw, []byte("messages over 64k are not allowed"))
-		if err != nil {
-			return "", err
-		}
-		return "", ErrTooLarge
+		return nil, ErrTooLarge
 	}
 
 	buf := make([]byte, length)
-	_, err = io.ReadFull(rw, buf)
+	_, err = io.ReadFull(br, buf)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if len(buf) == 0 || buf[length-1] != '\n' {
-		return "", errors.New("message did not have trailing newline")
+		return nil, errors.New("message did not have trailing newline")
 	}
 
 	// slice off the trailing newline
 	buf = buf[:length-1]
 
-	return string(buf), nil
+	return buf, nil
+
+}
+
+type byteReaderIface interface {
+	Read([]byte) (int, error)
+	ReadByte() (byte, error)
 }
 
 // byteReader implements the ByteReader interface that ReadUVarint requires
