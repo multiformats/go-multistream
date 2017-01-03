@@ -68,9 +68,13 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 		close(done)
 	}()
 
-	err := SelectProtoOrFail("/a", b)
+	sel, err := SelectOneOf([]string{"/foo", "/a"}, b)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if sel != "/a" {
+		t.Fatal("wrong protocol")
 	}
 
 	select {
