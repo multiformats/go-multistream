@@ -168,7 +168,6 @@ func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (Multistream,
 		lzc.whlock.Lock()
 		defer lzc.whlock.Unlock()
 		lzc.whsync = true
-		lzc.whandshake = true
 
 		if err := delimWriteBuffered(rwc, []byte(ProtocolID)); err != nil {
 			lzc.werr = err
