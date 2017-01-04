@@ -10,6 +10,7 @@
   "language": "go",
   "license": "",
   "name": "go-multistream",
-  "version": "0.3.3"
+  "releaseCmd": "git commit -a -m \"gx publish $VERSION\"",
+  "version": "0.3.4"
 }
 
