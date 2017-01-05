@@ -161,11 +161,15 @@ func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (Multistream,
 	lzc := &lazyConn{
 		con:        rwc,
 		rhandshake: true,
+		rhsync:     true,
 	}
+
+	// take lock here to prevent a race condition where the reads below from
+	// finishing and taking the write lock before this goroutine can
+	lzc.whlock.Lock()
 
 	go func() {
 		defer close(writeErr)
-		lzc.whlock.Lock()
 		defer lzc.whlock.Unlock()
 		lzc.whsync = true
 
@@ -182,6 +186,7 @@ func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (Multistream,
 				return
 			}
 		}
+		lzc.whandshake = true
 	}()
 
 	line, err := ReadNextToken(rwc)
