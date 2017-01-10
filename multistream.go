@@ -227,8 +227,10 @@ loop:
 
 			select {
 			case pval <- tok:
-			case err := <-writeErr:
-				return nil, "", nil, err
+			case <-writeErr:
+				// explicitly ignore this error. It will be returned to any
+				// writers and if we don't plan on writing anything, we still
+				// want to complete the handshake
 			}
 
 			// hand off processing to the sub-protocol handler

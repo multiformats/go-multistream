@@ -86,7 +86,59 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 	verifyPipe(t, ac, b)
 }
 
-func TestNegLazyStress(t *testing.T) {
+func TestNegLazyStressRead(t *testing.T) {
+	count := 1000
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+	mux.AddHandler("/b", nil)
+	mux.AddHandler("/c", nil)
+
+	message := []byte("this is the message")
+	listener := make(chan io.ReadWriteCloser)
+	go func() {
+		for rwc := range listener {
+			m, selected, _, err := mux.NegotiateLazy(rwc)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+
+			if selected != "/a" {
+				t.Error("incorrect protocol selected")
+				return
+			}
+
+			buf := make([]byte, len(message))
+			_, err = io.ReadFull(m, buf)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+
+			if !bytes.Equal(message, buf) {
+				t.Fatal("incorrect output: ", buf)
+			}
+			rwc.Close()
+		}
+	}()
+
+	for i := 0; i < count; i++ {
+		a, b := net.Pipe()
+		listener <- a
+
+		ms := NewMSSelect(b, "/a")
+
+		_, err := ms.Write(message)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		b.Close()
+	}
+}
+
+func TestNegLazyStressWrite(t *testing.T) {
 	count := 1000
 
 	mux := NewMultistreamMuxer()
