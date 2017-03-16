@@ -5,8 +5,14 @@ import (
 	"io"
 )
 
+// ErrNotSupported is the error returned when the muxer does not support
+// the protocol specified for the handshake.
 var ErrNotSupported = errors.New("protocol not supported")
 
+// SelectProtoOrFail performs the initial multistream handshake
+// to inform the muxer of the protocol that will be used to communicate
+// on this ReadWriteCloser. It returns an error if, for example,
+// the muxer does not know how to handle this protocol.
 func SelectProtoOrFail(proto string, rwc io.ReadWriteCloser) error {
 	err := handshake(rwc)
 	if err != nil {
@@ -16,6 +22,8 @@ func SelectProtoOrFail(proto string, rwc io.ReadWriteCloser) error {
 	return trySelect(proto, rwc)
 }
 
+// SelectOneOf will perform handshakes with the protocols on the given slice
+// until it finds one which is supported by the muxer.
 func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
 	err := handshake(rwc)
 	if err != nil {

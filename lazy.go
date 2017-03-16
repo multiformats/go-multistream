@@ -7,10 +7,15 @@ import (
 	"sync"
 )
 
+// Multistream represents in essense a ReadWriteCloser, or a single
+// communication wire which supports multiple streams on it. Each
+// stream is identified by a protocol tag.
 type Multistream interface {
 	io.ReadWriteCloser
 }
 
+// NewMSSelect returns a new Multistream which is able to perform
+// protocol selection with a MultistreamMuxer.
 func NewMSSelect(c io.ReadWriteCloser, proto string) Multistream {
 	return &lazyConn{
 		protos: []string{ProtocolID, proto},
@@ -18,6 +23,9 @@ func NewMSSelect(c io.ReadWriteCloser, proto string) Multistream {
 	}
 }
 
+// NewMultistream returns a multistream for the given protocol. This will not
+// perform any protocol selection. If you are using a MultistreamMuxer, use
+// NewMSSelect.
 func NewMultistream(c io.ReadWriteCloser, proto string) Multistream {
 	return &lazyConn{
 		protos: []string{proto},
