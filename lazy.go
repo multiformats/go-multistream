@@ -119,6 +119,9 @@ func (l *lazyConn) writeHandshake() error {
 }
 
 func (l *lazyConn) Write(b []byte) (int, error) {
+	l.whlock.Lock()
+	defer l.whlock.Unlock()
+	
 	if !l.whandshake {
 		go l.readHandshake()
 		err := l.writeHandshake()
