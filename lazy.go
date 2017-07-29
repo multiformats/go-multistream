@@ -52,7 +52,11 @@ type lazyConn struct {
 
 func (l *lazyConn) Read(b []byte) (int, error) {
 	if !l.rhandshake {
-		go l.writeHandshake()
+		go func() {
+			l.whlock.Lock()
+			defer l.whlock.Unlock()
+			l.writeHandshake()
+		}()
 		err := l.readHandshake()
 		if err != nil {
 			return 0, err
@@ -96,9 +100,6 @@ func (l *lazyConn) readHandshake() error {
 }
 
 func (l *lazyConn) writeHandshake() error {
-	l.whlock.Lock()
-	defer l.whlock.Unlock()
-
 	if l.whsync {
 		return l.werr
 	}
