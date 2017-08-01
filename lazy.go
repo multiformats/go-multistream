@@ -36,13 +36,13 @@ func NewMultistream(c io.ReadWriteCloser, proto string) Multistream {
 type lazyConn struct {
 	rhandshake bool // only accessed by 'Read' should not call read async
 
-	rhlock sync.Mutex
+	rhlock sync.RWMutex
 	rhsync bool //protected by mutex
 	rerr   error
 
 	whandshake bool
 
-	whlock sync.Mutex
+	whlock sync.RWMutex
 	whsync bool
 	werr   error
 
@@ -51,7 +51,11 @@ type lazyConn struct {
 }
 
 func (l *lazyConn) Read(b []byte) (int, error) {
-	if !l.rhandshake {
+	l.rhlock.RLock()
+	rhandshake := l.rhandshake
+	l.rhlock.RUnlock()
+
+	if !rhandshake {
 		go l.writeHandshake()
 		err := l.readHandshake()
 		if err != nil {
@@ -69,13 +73,17 @@ func (l *lazyConn) Read(b []byte) (int, error) {
 }
 
 func (l *lazyConn) readHandshake() error {
+	l.rhlock.RLock()
+	rhsync := l.rhsync
+	l.rhlock.RUnlock()
+	// if we've already done this, exit
+	if rhsync {
+		return l.rerr
+	}
+
 	l.rhlock.Lock()
 	defer l.rhlock.Unlock()
 
-	// if we've already done this, exit
-	if l.rhsync {
-		return l.rerr
-	}
 	l.rhsync = true
 
 	for _, proto := range l.protos {
@@ -96,12 +104,16 @@ func (l *lazyConn) readHandshake() error {
 }
 
 func (l *lazyConn) writeHandshake() error {
-	l.whlock.Lock()
-	defer l.whlock.Unlock()
-
-	if l.whsync {
+	l.whlock.RLock()
+	whsync := l.whsync
+	l.whlock.RUnlock()
+	// if we've already done this, exit
+	if whsync {
 		return l.werr
 	}
+
+	l.whlock.Lock()
+	defer l.whlock.Unlock()
 
 	l.whsync = true
 
@@ -119,7 +131,11 @@ func (l *lazyConn) writeHandshake() error {
 }
 
 func (l *lazyConn) Write(b []byte) (int, error) {
-	if !l.whandshake {
+	l.whlock.RLock()
+	whandshake := l.whandshake
+	l.whlock.RUnlock()
+
+	if !whandshake {
 		go l.readHandshake()
 		err := l.writeHandshake()
 		if err != nil {
