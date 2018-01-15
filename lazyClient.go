@@ -17,7 +17,7 @@ type Multistream interface {
 // NewMSSelect returns a new Multistream which is able to perform
 // protocol selection with a MultistreamMuxer.
 func NewMSSelect(c io.ReadWriteCloser, proto string) Multistream {
-	return &lazyConn{
+	return &lazyClientConn{
 		protos: []string{ProtocolID, proto},
 		con:    c,
 	}
@@ -27,40 +27,31 @@ func NewMSSelect(c io.ReadWriteCloser, proto string) Multistream {
 // perform any protocol selection. If you are using a MultistreamMuxer, use
 // NewMSSelect.
 func NewMultistream(c io.ReadWriteCloser, proto string) Multistream {
-	return &lazyConn{
+	return &lazyClientConn{
 		protos: []string{proto},
 		con:    c,
 	}
 }
 
-type lazyConn struct {
-	rhandshake bool // only accessed by 'Read' should not call read async
+type lazyClientConn struct {
+	rhandshakeOnce sync.Once
+	rerr           error
 
-	rhlock sync.Mutex
-	rhsync bool //protected by mutex
-	rerr   error
-
-	whandshake bool
-
-	whlock sync.Mutex
-	whsync bool
-	werr   error
+	whandshakeOnce sync.Once
+	werr           error
 
 	protos []string
 	con    io.ReadWriteCloser
 }
 
-func (l *lazyConn) Read(b []byte) (int, error) {
-	if !l.rhandshake {
-		go l.writeHandshake()
-		err := l.readHandshake()
-		if err != nil {
-			return 0, err
-		}
-
-		l.rhandshake = true
+func (l *lazyClientConn) Read(b []byte) (int, error) {
+	l.rhandshakeOnce.Do(func() {
+		go l.whandshakeOnce.Do(l.doWriteHandshake)
+		l.doReadHandshake()
+	})
+	if l.rerr != nil {
+		return 0, l.rerr
 	}
-
 	if len(b) == 0 {
 		return 0, nil
 	}
@@ -68,70 +59,59 @@ func (l *lazyConn) Read(b []byte) (int, error) {
 	return l.con.Read(b)
 }
 
-func (l *lazyConn) readHandshake() error {
-	l.rhlock.Lock()
-	defer l.rhlock.Unlock()
-
-	// if we've already done this, exit
-	if l.rhsync {
-		return l.rerr
-	}
-	l.rhsync = true
-
+func (l *lazyClientConn) doReadHandshake() {
 	for _, proto := range l.protos {
 		// read protocol
 		tok, err := ReadNextToken(l.con)
 		if err != nil {
 			l.rerr = err
-			return err
+			return
 		}
 
 		if tok != proto {
 			l.rerr = fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", tok, proto)
-			return l.rerr
+			return
 		}
 	}
-
-	return nil
 }
 
-func (l *lazyConn) writeHandshake() error {
-	l.whlock.Lock()
-	defer l.whlock.Unlock()
+func (l *lazyClientConn) doWriteHandshake() {
+	l.doWriteHandshakeWithExtra(nil)
+}
 
-	if l.whsync {
-		return l.werr
-	}
-
-	l.whsync = true
-
+// Perform the write handshake but *also* write some extra data.
+func (l *lazyClientConn) doWriteHandshakeWithExtra(extra []byte) int {
 	buf := bufio.NewWriter(l.con)
 	for _, proto := range l.protos {
-		err := delimWrite(buf, []byte(proto))
-		if err != nil {
-			l.werr = err
-			return err
+		l.werr = delimWrite(buf, []byte(proto))
+		if l.werr != nil {
+			return 0
 		}
 	}
 
+	n := 0
+	if len(extra) > 0 {
+		n, l.werr = buf.Write(extra)
+		if l.werr != nil {
+			return n
+		}
+	}
 	l.werr = buf.Flush()
-	return l.werr
+	return n
 }
 
-func (l *lazyConn) Write(b []byte) (int, error) {
-	if !l.whandshake {
-		go l.readHandshake()
-		err := l.writeHandshake()
-		if err != nil {
-			return 0, err
-		}
-
-		l.whandshake = true
+func (l *lazyClientConn) Write(b []byte) (int, error) {
+	n := 0
+	l.whandshakeOnce.Do(func() {
+		go l.rhandshakeOnce.Do(l.doReadHandshake)
+		n = l.doWriteHandshakeWithExtra(b)
+	})
+	if l.werr != nil || n > 0 {
+		return n, l.werr
 	}
-
 	return l.con.Write(b)
 }
 
-func (l *lazyConn) Close() error {
+func (l *lazyClientConn) Close() error {
 	return l.con.Close()
 }
