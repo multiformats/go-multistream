@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+// lazyServerConn is an io.ReadWriteCloser adapter used for negotiating inbound
+// streams (see NegotiateLazy).
+//
+// This is "lazy" because it doesn't wait for the write half to succeed before
+// allowing us to read from the stream.
 type lazyServerConn struct {
 	waitForHandshake sync.Once
 	werr             error
@@ -21,7 +26,6 @@ func (l *lazyServerConn) Write(b []byte) (int, error) {
 }
 
 func (l *lazyServerConn) Read(b []byte) (int, error) {
-	// TODO: The tests require this for some reason. Not sure if it's correct...
 	if len(b) == 0 {
 		return 0, nil
 	}

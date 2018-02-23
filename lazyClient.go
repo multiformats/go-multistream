@@ -33,17 +33,34 @@ func NewMultistream(c io.ReadWriteCloser, proto string) Multistream {
 	}
 }
 
+// lazyClientConn is a ReadWriteCloser adapter that lazily negotiates a protocol
+// using multistream-select on first use.
+//
+// It *does not* block writes waiting for the other end to respond. Instead, it
+// simply assumes the negotiation went successfully and starts writing data.
+// See: https://github.com/multiformats/go-multistream/issues/20
 type lazyClientConn struct {
+	// Used to ensure we only trigger the write half of the handshake once.
 	rhandshakeOnce sync.Once
 	rerr           error
 
+	// Used to ensure we only trigger the read half of the handshake once.
 	whandshakeOnce sync.Once
 	werr           error
 
+	// The sequence of protocols to negotiate.
 	protos []string
-	con    io.ReadWriteCloser
+
+	// The inner connection.
+	con io.ReadWriteCloser
 }
 
+// Read reads data from the io.ReadWriteCloser.
+//
+// If the protocol hasn't yet been negotiated, this method triggers the write
+// half of the handshake and then waits for the read half to complete.
+//
+// It returns an error if the read half of the handshake fails.
 func (l *lazyClientConn) Read(b []byte) (int, error) {
 	l.rhandshakeOnce.Do(func() {
 		go l.whandshakeOnce.Do(l.doWriteHandshake)
@@ -76,11 +93,11 @@ func (l *lazyClientConn) doReadHandshake() {
 }
 
 func (l *lazyClientConn) doWriteHandshake() {
-	l.doWriteHandshakeWithExtra(nil)
+	l.doWriteHandshakeWithData(nil)
 }
 
 // Perform the write handshake but *also* write some extra data.
-func (l *lazyClientConn) doWriteHandshakeWithExtra(extra []byte) int {
+func (l *lazyClientConn) doWriteHandshakeWithData(extra []byte) int {
 	buf := bufio.NewWriter(l.con)
 	for _, proto := range l.protos {
 		l.werr = delimWrite(buf, []byte(proto))
@@ -100,11 +117,18 @@ func (l *lazyClientConn) doWriteHandshakeWithExtra(extra []byte) int {
 	return n
 }
 
+// Write writes the given buffer to the underlying connection.
+//
+// If the protocol has not yet been negotiated, write waits for the write half
+// of the handshake to complete triggers (but does not wait for) the read half.
+//
+// Write *also* ignores errors from the read half of the handshake (in case the
+// stream is actually write only).
 func (l *lazyClientConn) Write(b []byte) (int, error) {
 	n := 0
 	l.whandshakeOnce.Do(func() {
 		go l.rhandshakeOnce.Do(l.doReadHandshake)
-		n = l.doWriteHandshakeWithExtra(b)
+		n = l.doWriteHandshakeWithData(b)
 	})
 	if l.werr != nil || n > 0 {
 		return n, l.werr
@@ -112,6 +136,7 @@ func (l *lazyClientConn) Write(b []byte) (int, error) {
 	return l.con.Write(b)
 }
 
+// Close closes the underlying io.ReadWriteCloser
 func (l *lazyClientConn) Close() error {
 	return l.con.Close()
 }
