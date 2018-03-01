@@ -125,7 +125,7 @@ func (msm *MultistreamMuxer) AddHandlerWithFunc(protocol string, match func(stri
 	msm.handlerlock.Lock()
 	msm.removeHandler(protocol)
 	msm.handlers = append(msm.handlers, Handler{
-		MatchFunc: fulltextMatch(protocol),
+		MatchFunc: match,
 		Handle:    handler,
 		AddName:   protocol,
 	})
