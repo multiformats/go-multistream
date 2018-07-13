@@ -12,8 +12,28 @@ import (
 	"time"
 )
 
+func newPipe(t *testing.T) (io.ReadWriteCloser, io.ReadWriteCloser) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Error(err)
+	}
+	cchan := make(chan net.Conn)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			t.Error(err)
+		}
+		cchan <- c
+	}()
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Error(err)
+	}
+	return <-cchan, c
+}
+
 func TestProtocolNegotiation(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -47,7 +67,7 @@ func TestProtocolNegotiation(t *testing.T) {
 }
 
 func TestProtocolNegotiationLazy(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -124,7 +144,7 @@ func TestNegLazyStressRead(t *testing.T) {
 	}()
 
 	for i := 0; i < count; i++ {
-		a, b := net.Pipe()
+		a, b := newPipe(t)
 		listener <- a
 
 		ms := NewMSSelect(b, "/a")
@@ -177,7 +197,7 @@ func TestNegLazyStressWrite(t *testing.T) {
 	}()
 
 	for i := 0; i < count; i++ {
-		a, b := net.Pipe()
+		a, b := newPipe(t)
 		listener <- a
 
 		ms := NewMSSelect(b, "/a")
@@ -198,7 +218,7 @@ func TestNegLazyStressWrite(t *testing.T) {
 }
 
 func TestInvalidProtocol(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	done := make(chan struct{})
@@ -224,7 +244,7 @@ func TestInvalidProtocol(t *testing.T) {
 }
 
 func TestSelectOne(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -262,7 +282,7 @@ func TestSelectOne(t *testing.T) {
 }
 
 func TestSelectFails(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -299,7 +319,7 @@ func TestRemoveProtocol(t *testing.T) {
 }
 
 func TestSelectOneAndWrite(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -337,7 +357,7 @@ func TestSelectOneAndWrite(t *testing.T) {
 }
 
 func TestLazyConns(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -351,7 +371,7 @@ func TestLazyConns(t *testing.T) {
 }
 
 func TestLazyAndMux(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -395,7 +415,7 @@ func TestLazyAndMux(t *testing.T) {
 }
 
 func TestHandleFunc(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -423,7 +443,7 @@ func TestHandleFunc(t *testing.T) {
 }
 
 func TestAddHandlerOverride(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/foo", func(p string, rwc io.ReadWriteCloser) error {
@@ -451,7 +471,7 @@ func TestAddHandlerOverride(t *testing.T) {
 }
 
 func TestLazyAndMuxWrite(t *testing.T) {
-	a, b := net.Pipe()
+	a, b := newPipe(t)
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)

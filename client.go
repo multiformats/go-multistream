@@ -44,6 +44,10 @@ func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
 }
 
 func handshake(rwc io.ReadWriteCloser) error {
+	if err := delimWrite(rwc, []byte(ProtocolID)); err != nil {
+		return err
+	}
+
 	tok, err := ReadNextToken(rwc)
 	if err != nil {
 		return err
@@ -52,12 +56,6 @@ func handshake(rwc io.ReadWriteCloser) error {
 	if tok != ProtocolID {
 		return errors.New("received mismatch in protocol id")
 	}
-
-	err = delimWrite(rwc, []byte(ProtocolID))
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
