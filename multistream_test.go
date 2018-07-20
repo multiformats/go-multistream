@@ -231,9 +231,9 @@ func TestInvalidProtocol(t *testing.T) {
 	}()
 
 	ms := NewMultistream(b, "/THIS_IS_WRONG")
-	_, err := ms.Write(nil)
+	_, err := ms.Read([]byte{0})
 	if err == nil {
-		t.Fatal("this write should not succeed")
+		t.Fatal("this read should not succeed")
 	}
 
 	select {
