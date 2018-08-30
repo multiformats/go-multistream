@@ -44,7 +44,7 @@ func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
 }
 
 func handshake(rwc io.ReadWriteCloser) error {
-	if err := delimWrite(rwc, []byte(ProtocolID)); err != nil {
+	if err := delimWriteBuffered(rwc, []byte(ProtocolID)); err != nil {
 		return err
 	}
 
@@ -60,7 +60,7 @@ func handshake(rwc io.ReadWriteCloser) error {
 }
 
 func trySelect(proto string, rwc io.ReadWriteCloser) error {
-	err := delimWrite(rwc, []byte(proto))
+	err := delimWriteBuffered(rwc, []byte(proto))
 	if err != nil {
 		return err
 	}
