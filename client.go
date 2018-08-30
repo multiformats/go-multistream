@@ -44,13 +44,19 @@ func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
 }
 
 func handshake(rwc io.ReadWriteCloser) error {
-	if err := delimWriteBuffered(rwc, []byte(ProtocolID)); err != nil {
-		return err
-	}
+	errCh := make(chan error)
+	go func() {
+		errCh <- delimWriteBuffered(rwc, []byte(ProtocolID))
+	}()
 
-	tok, err := ReadNextToken(rwc)
-	if err != nil {
-		return err
+	tok, readErr := ReadNextToken(rwc)
+	writeErr := <-errCh
+
+	if writeErr != nil {
+		return writeErr
+	}
+	if readErr != nil {
+		return readErr
 	}
 
 	if tok != ProtocolID {
