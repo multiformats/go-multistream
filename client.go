@@ -44,7 +44,7 @@ func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
 }
 
 func handshake(rwc io.ReadWriteCloser) error {
-	errCh := make(chan error)
+	errCh := make(chan error, 1)
 	go func() {
 		errCh <- delimWriteBuffered(rwc, []byte(ProtocolID))
 	}()
