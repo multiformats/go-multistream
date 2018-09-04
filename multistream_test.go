@@ -442,6 +442,79 @@ func TestHandleFunc(t *testing.T) {
 	verifyPipe(t, a, b)
 }
 
+func TestAddHandlerOptions(t *testing.T) {
+	mux := NewMultistreamMuxer()
+	handlerCalled := make(chan string, 1)
+	setHandler := func(protocol string, opts ...Option) {
+		if err := mux.AddHandler(protocol, func(p string, rwc io.ReadWriteCloser) error {
+			handlerCalled <- protocol
+			return nil
+		}, opts...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setHandler("/foo", Prefix(true))
+	setHandler("/foo/bar")
+	setHandler("/a/b/c/d")
+
+	if err := mux.AddHandler("/a/b/c", nil, Exclusive(true)); err == nil {
+		t.Error("expected error registering exclusive, conflicting, protocol")
+	}
+	setHandler("/a/b/c", Exclusive(true), Override(true), Prefix(true))
+
+	if err := mux.AddHandler("/a/b/c/d", nil, Exclusive(true), Override(true)); err == nil {
+		t.Error("expected error registering exclusive, conflicting, sub-protocol")
+	}
+
+	for proto, expected := range map[string]string{
+		"/foo":        "/foo",
+		"/foo/baz":    "/foo",
+		"/foo/barbar": "/foo",
+		"/foo/bar":    "/foo/bar",
+		"/a/b/c/d":    "/a/b/c",
+	} {
+		a, b := newPipe(t)
+		go func() {
+			err := SelectProtoOrFail(proto, a)
+			if err != nil {
+				t.Error(err)
+			}
+		}()
+		err := mux.Handle(b)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		verifyPipe(t, a, b)
+		actual := <-handlerCalled
+		if actual != expected {
+			t.Errorf("wrong handler called: expected %s, got %s", expected, actual)
+		}
+		a.Close()
+		b.Close()
+	}
+	a, b := newPipe(t)
+	go func() {
+		err := SelectProtoOrFail("/foo/bar/baz", a)
+		a.Close()
+		if err == nil {
+			t.Error("protocol selection should have failed")
+		}
+	}()
+	err := mux.Handle(b)
+	b.Close()
+	if err == nil {
+		t.Error("protocol selection should have failed")
+	}
+
+	if mux.AddHandler("/foo", nil) == nil {
+		t.Error("should have failed to override handler")
+	}
+	if err := mux.AddHandler("/foo", nil, Override(true)); err != nil {
+		t.Error(err)
+	}
+}
+
 func TestAddHandlerOverride(t *testing.T) {
 	a, b := newPipe(t)
 
@@ -453,7 +526,7 @@ func TestAddHandlerOverride(t *testing.T) {
 
 	mux.AddHandler("/foo", func(p string, rwc io.ReadWriteCloser) error {
 		return nil
-	})
+	}, Override(true))
 
 	go func() {
 		err := SelectProtoOrFail("/foo", a)
