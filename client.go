@@ -12,7 +12,7 @@ var ErrNotSupported = errors.New("protocol not supported")
 
 // ErrNoProtocols is the error returned when the no protocols have been
 // specified.
-var ErrNoProtocols = errors.New("protocol not supported")
+var ErrNoProtocols = errors.New("no protocols specified")
 
 // SelectProtoOrFail performs the initial multistream handshake
 // to inform the muxer of the protocol that will be used to communicate
