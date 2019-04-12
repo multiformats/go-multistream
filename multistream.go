@@ -21,7 +21,7 @@ const ProtocolID = "/multistream/1.0.0"
 
 // HandlerFunc is a user-provided function used by the MultistreamMuxer to
 // handle a protocol/stream.
-type HandlerFunc func(protocol string, rwc io.ReadWriteCloser) error
+type HandlerFunc = func(protocol string, rwc io.ReadWriteCloser) error
 
 // Handler is a wrapper to HandlerFunc which attaches a name (protocol) and a
 // match function which can optionally be used to select a handler by other
@@ -181,7 +181,7 @@ func (msm *MultistreamMuxer) findHandler(proto string) *Handler {
 // a multistream, the protocol used, the handler and an error. It is lazy
 // because the write-handshake is performed on a subroutine, allowing this
 // to return before that handshake is completed.
-func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (Multistream, string, HandlerFunc, error) {
+func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (io.ReadWriteCloser, string, HandlerFunc, error) {
 	pval := make(chan string, 1)
 	writeErr := make(chan error, 1)
 	defer close(pval)
