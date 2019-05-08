@@ -19,6 +19,12 @@ var ErrTooLarge = errors.New("incoming message was too large")
 // the multistream muxers on both sides of a channel can work with each other.
 const ProtocolID = "/multistream/1.0.0"
 
+var writerPool = sync.Pool{
+	New: func() interface{} {
+		return bufio.NewWriter(nil)
+	},
+}
+
 // HandlerFunc is a user-provided function used by the MultistreamMuxer to
 // handle a protocol/stream.
 type HandlerFunc func(protocol string, rwc io.ReadWriteCloser) error
@@ -55,7 +61,9 @@ func writeUvarint(w io.Writer, i uint64) error {
 }
 
 func delimWriteBuffered(w io.Writer, mes []byte) error {
-	bw := bufio.NewWriter(w)
+	bw := getWriter(w)
+	defer putWriter(bw)
+
 	err := delimWrite(bw, mes)
 	if err != nil {
 		return err
@@ -442,4 +450,15 @@ func (br *byteReader) ReadByte() (byte, error) {
 		err = io.ErrNoProgress
 	}
 	return 0, err
+}
+
+func getWriter(w io.Writer) *bufio.Writer {
+	bw := writerPool.Get().(*bufio.Writer)
+	bw.Reset(w)
+	return bw
+}
+
+func putWriter(bw *bufio.Writer) {
+	bw.Reset(nil)
+	writerPool.Put(bw)
 }
