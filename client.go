@@ -48,6 +48,12 @@ func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
 	if len(protos) == 0 {
 		return "", ErrNoProtocols
 	}
+
+	// Use SelectProtoOrFail to pipeline the /multistream/1.0.0 handshake
+	// with an attempt to negotiate the first protocol. If that fails, we
+	// can continue negotiating the rest of the protocols normally.
+	//
+	// This saves us a round trip.
 	switch err := SelectProtoOrFail(protos[0], rwc); err {
 	case nil:
 		return protos[0], nil
