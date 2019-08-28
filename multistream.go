@@ -93,26 +93,34 @@ func delimWrite(w io.Writer, mes []byte) error {
 // Ls is a Multistream muxer command which returns the list of handler names
 // available on a muxer.
 func Ls(rw io.ReadWriter) ([]string, error) {
-	err := delimWriteBuffered(rw, []byte("ls"))
+	err := handshake(rw)
+	if err != nil {
+		return nil, err
+	}
+	err = delimWriteBuffered(rw, []byte("ls"))
 	if err != nil {
 		return nil, err
 	}
 
-	n, err := binary.ReadUvarint(&byteReader{rw})
+	response, err := lpReadBuf(rw)
 	if err != nil {
 		return nil, err
 	}
+
+	r := bytes.NewReader(response)
 
 	var out []string
-	for i := uint64(0); i < n; i++ {
-		val, err := lpReadBuf(rw)
-		if err != nil {
+	for {
+		val, err := lpReadBuf(r)
+		switch err {
+		default:
 			return nil, err
+		case io.EOF:
+			return out, nil
+		case nil:
+			out = append(out, string(val))
 		}
-		out = append(out, string(val))
 	}
-
-	return out, nil
 }
 
 func fulltextMatch(s string) func(string) bool {
@@ -337,11 +345,6 @@ func (msm *MultistreamMuxer) Ls(w io.Writer) error {
 	buf := new(bytes.Buffer)
 
 	msm.handlerlock.RLock()
-	err := writeUvarint(buf, uint64(len(msm.handlers)))
-	if err != nil {
-		return err
-	}
-
 	for _, h := range msm.handlers {
 		err := delimWrite(buf, []byte(h.AddName))
 		if err != nil {
@@ -351,13 +354,7 @@ func (msm *MultistreamMuxer) Ls(w io.Writer) error {
 	}
 	msm.handlerlock.RUnlock()
 
-	ll := make([]byte, 16)
-	nw := binary.PutUvarint(ll, uint64(buf.Len()))
-
-	r := io.MultiReader(bytes.NewReader(ll[:nw]), buf)
-
-	_, err = io.Copy(w, r)
-	return err
+	return delimWrite(w, buf.Bytes())
 }
 
 // Handle performs protocol negotiation on a ReadWriteCloser
@@ -418,6 +415,9 @@ func lpReadBuf(r io.Reader) ([]byte, error) {
 	buf := make([]byte, length)
 	_, err = io.ReadFull(r, buf)
 	if err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
 		return nil, err
 	}
 
