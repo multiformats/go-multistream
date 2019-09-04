@@ -3,7 +3,6 @@ package multistream
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -142,6 +141,7 @@ func TestNegLazyStressRead(t *testing.T) {
 			rwc.Close()
 		}
 	}()
+	defer func() { close(listener) }()
 
 	for i := 0; i < count; i++ {
 		a, b := newPipe(t)
@@ -568,11 +568,10 @@ func TestTooLargeMessage(t *testing.T) {
 }
 
 func TestLs(t *testing.T) {
-	// TODO: in go1.7, use subtests (t.Run(....) )
-	subtestLs(nil)(t)
-	subtestLs([]string{"a"})(t)
-	subtestLs([]string{"a", "b", "c", "d", "e"})(t)
-	subtestLs([]string{"", "a"})(t)
+	t.Run("none", subtestLs(nil))
+	t.Run("one", subtestLs([]string{"a"}))
+	t.Run("many", subtestLs([]string{"a", "b", "c", "d", "e"}))
+	t.Run("empty", subtestLs([]string{"", "a"}))
 }
 
 func subtestLs(protos []string) func(*testing.T) {
@@ -584,25 +583,27 @@ func subtestLs(protos []string) func(*testing.T) {
 			mset[p] = true
 		}
 
-		buf := new(bytes.Buffer)
-		err := mr.Ls(buf)
+		c1, c2 := net.Pipe()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+
+			proto, _, err := mr.Negotiate(c2)
+			c2.Close()
+			if err != io.EOF {
+				t.Error(err)
+			}
+			if proto != "" {
+				t.Errorf("expected no proto, got %s", proto)
+			}
+		}()
+		defer func() { <-done }()
+
+		items, err := Ls(c1)
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		n, err := binary.ReadUvarint(buf)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if int(n) != buf.Len() {
-			t.Fatal("length wasnt properly prefixed")
-		}
-
-		items, err := Ls(buf)
-		if err != nil {
-			t.Fatal(err)
-		}
+		c1.Close()
 
 		if len(items) != len(protos) {
 			t.Fatal("got wrong number of protocols")

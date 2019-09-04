@@ -74,13 +74,13 @@ func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
 	return "", ErrNotSupported
 }
 
-func handshake(rwc io.ReadWriteCloser) error {
+func handshake(rw io.ReadWriter) error {
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- delimWriteBuffered(rwc, []byte(ProtocolID))
+		errCh <- delimWriteBuffered(rw, []byte(ProtocolID))
 	}()
 
-	if err := readMultistreamHeader(rwc); err != nil {
+	if err := readMultistreamHeader(rw); err != nil {
 		return err
 	}
 	return <-errCh
