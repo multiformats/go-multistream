@@ -237,6 +237,11 @@ func simOpenSelectServer(protos []string, rwc io.ReadWriteCloser) (string, error
 
 	for {
 		tok, err = ReadNextToken(rwc)
+
+		if err == io.EOF {
+			return "", ErrNotSupported
+		}
+
 		if err != nil {
 			return "", err
 		}
