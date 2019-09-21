@@ -84,22 +84,27 @@ func SelectWithSimopen(protos []string, rwc io.ReadWriteCloser) (string, bool, e
 		return "", false, ErrNoProtocols
 	}
 
-	var buf bytes.Buffer
-	delimWrite(&buf, []byte(ProtocolID))
-	delimWrite(&buf, []byte("iamclient"))
-	delimWrite(&buf, []byte(protos[0]))
-	_, err := io.Copy(rwc, &buf)
-	if err != nil {
-		return "", false, err
-	}
+	werrCh := make(chan error, 1)
+	go func() {
+		var buf bytes.Buffer
+		delimWrite(&buf, []byte(ProtocolID))
+		delimWrite(&buf, []byte("iamclient"))
+		delimWrite(&buf, []byte(protos[0]))
+		_, err := io.Copy(rwc, &buf)
+		werrCh <- err
+	}()
 
-	err = readMultistreamHeader(rwc)
+	err := readMultistreamHeader(rwc)
 	if err != nil {
 		return "", false, err
 	}
 
 	tok, err := ReadNextToken(rwc)
 	if err != nil {
+		return "", false, err
+	}
+
+	if err = <-werrCh; err != nil {
 		return "", false, err
 	}
 
@@ -161,11 +166,12 @@ again:
 		return "", false, err
 	}
 
-	myselect := []byte("select:" + string(mynonce))
-	err = delimWriteBuffered(rwc, myselect)
-	if err != nil {
-		return "", false, err
-	}
+	werrCh := make(chan error, 1)
+	go func() {
+		myselect := []byte("select:" + string(mynonce))
+		err := delimWriteBuffered(rwc, myselect)
+		werrCh <- err
+	}()
 
 	var peerselect string
 	for {
@@ -180,6 +186,10 @@ again:
 			peerselect = tok
 			break
 		}
+	}
+
+	if err = <-werrCh; err != nil {
+		return "", false, err
 	}
 
 	peernonce := []byte(peerselect[7:])
@@ -222,10 +232,11 @@ again:
 }
 
 func simOpenSelectServer(protos []string, rwc io.ReadWriteCloser) (string, error) {
-	err := delimWriteBuffered(rwc, []byte("responder"))
-	if err != nil {
-		return "", err
-	}
+	werrCh := make(chan error, 1)
+	go func() {
+		err := delimWriteBuffered(rwc, []byte("responder"))
+		werrCh <- err
+	}()
 
 	tok, err := ReadNextToken(rwc)
 	if err != nil {
@@ -233,6 +244,9 @@ func simOpenSelectServer(protos []string, rwc io.ReadWriteCloser) (string, error
 	}
 	if tok != "initiator" {
 		return "", errors.New("unexpected response: " + tok)
+	}
+	if err = <-werrCh; err != nil {
+		return "", err
 	}
 
 	for {
@@ -266,10 +280,11 @@ func simOpenSelectServer(protos []string, rwc io.ReadWriteCloser) (string, error
 }
 
 func simOpenSelectClient(protos []string, rwc io.ReadWriteCloser) (string, error) {
-	err := delimWriteBuffered(rwc, []byte("initiator"))
-	if err != nil {
-		return "", err
-	}
+	werrCh := make(chan error, 1)
+	go func() {
+		err := delimWriteBuffered(rwc, []byte("initiator"))
+		werrCh <- err
+	}()
 
 	tok, err := ReadNextToken(rwc)
 	if err != nil {
@@ -277,6 +292,9 @@ func simOpenSelectClient(protos []string, rwc io.ReadWriteCloser) (string, error
 	}
 	if tok != "responder" {
 		return "", errors.New("unexpected response: " + tok)
+	}
+	if err = <-werrCh; err != nil {
+		return "", err
 	}
 
 	for _, p := range protos {
