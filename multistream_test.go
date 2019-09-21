@@ -743,3 +743,174 @@ func TestNegotiateFail(t *testing.T) {
 		t.Fatal("got wrong protocol")
 	}
 }
+
+func TestSimopenClientServer(t *testing.T) {
+	a, b := newPipe(t)
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+
+	done := make(chan struct{})
+	go func() {
+		selected, _, err := mux.Negotiate(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if selected != "/a" {
+			t.Fatal("incorrect protocol selected")
+		}
+		close(done)
+	}()
+
+	proto, server, err := SelectWithSimopen([]string{"/a"}, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if proto != "/a" {
+		t.Fatal("wrong protocol selected")
+	}
+
+	if server {
+		t.Fatal("expected to be client")
+	}
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("protocol negotiation didn't complete")
+	case <-done:
+	}
+
+	verifyPipe(t, a, b)
+}
+
+func TestSimopenClientServerFail(t *testing.T) {
+	a, b := newPipe(t)
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", nil)
+
+	done := make(chan struct{})
+	go func() {
+		_, _, err := mux.Negotiate(a)
+		if err != io.EOF {
+			t.Fatal(err)
+		}
+		close(done)
+	}()
+
+	_, _, err := SelectWithSimopen([]string{"/b"}, b)
+	if err != ErrNotSupported {
+		t.Fatal(err)
+	}
+	b.Close()
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("protocol negotiation didn't complete")
+	case <-done:
+	}
+}
+
+func TestSimopenClientClient(t *testing.T) {
+	a, b := newPipe(t)
+
+	done := make(chan bool, 1)
+	go func() {
+		proto, server, err := SelectWithSimopen([]string{"/a"}, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if proto != "/a" {
+			t.Fatal("wrong protocol selected")
+		}
+		done <- server
+	}()
+
+	proto, servera, err := SelectWithSimopen([]string{"/a"}, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != "/a" {
+		t.Fatal("wrong protocol selected")
+	}
+
+	var serverb bool
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("protocol negotiation didn't complete")
+
+	case serverb = <-done:
+	}
+
+	if servera == serverb {
+		t.Fatal("client selection failed")
+	}
+
+	verifyPipe(t, a, b)
+}
+
+func TestSimopenClientClient2(t *testing.T) {
+	a, b := newPipe(t)
+
+	done := make(chan bool, 1)
+	go func() {
+		proto, server, err := SelectWithSimopen([]string{"/a", "/b"}, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if proto != "/b" {
+			t.Fatal("wrong protocol selected")
+		}
+		done <- server
+	}()
+
+	proto, servera, err := SelectWithSimopen([]string{"/b"}, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proto != "/b" {
+		t.Fatal("wrong protocol selected")
+	}
+
+	var serverb bool
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("protocol negotiation didn't complete")
+
+	case serverb = <-done:
+	}
+
+	if servera == serverb {
+		t.Fatal("client selection failed")
+	}
+
+	verifyPipe(t, a, b)
+}
+
+func TestSimopenClientClientFail(t *testing.T) {
+	a, b := newPipe(t)
+
+	done := make(chan struct{})
+	go func() {
+		_, _, err := SelectWithSimopen([]string{"/a"}, b)
+		if err != ErrNotSupported {
+			t.Error(err)
+		}
+		b.Close()
+		close(done)
+	}()
+
+	_, _, err := SelectWithSimopen([]string{"/b"}, a)
+	if err != ErrNotSupported {
+		t.Fatal(err)
+	}
+	a.Close()
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("protocol negotiation didn't complete")
+
+	case <-done:
+	}
+}
