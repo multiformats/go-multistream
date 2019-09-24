@@ -222,7 +222,13 @@ func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (io.ReadWrite
 		}
 
 		for proto := range pval {
-			if err := delimWriteBuffered(rwc, []byte(proto)); err != nil {
+			if proto == "ls" {
+				if err := msm.Ls(rwc); err != nil {
+					lzc.werr = err
+					writeErr <- err
+					return
+				}
+			} else if err := delimWriteBuffered(rwc, []byte(proto)); err != nil {
 				lzc.werr = err
 				writeErr <- err
 				return

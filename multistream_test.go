@@ -575,20 +575,22 @@ func TestLs(t *testing.T) {
 }
 
 func subtestLs(protos []string) func(*testing.T) {
-	return func(t *testing.T) {
-		mr := NewMultistreamMuxer()
-		mset := make(map[string]bool)
-		for _, p := range protos {
-			mr.AddHandler(p, nil)
-			mset[p] = true
-		}
+	mr := NewMultistreamMuxer()
+	mset := make(map[string]bool)
+	for _, p := range protos {
+		mr.AddHandler(p, nil)
+		mset[p] = true
+	}
 
+	test := func(t *testing.T, negotiate func(io.ReadWriteCloser) (string, error)) {
 		c1, c2 := net.Pipe()
+		c1.SetDeadline(time.Now().Add(1 * time.Second))
+		c2.SetDeadline(time.Now().Add(1 * time.Second))
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
 
-			proto, _, err := mr.Negotiate(c2)
+			proto, err := negotiate(c2)
 			c2.Close()
 			if err != io.EOF {
 				t.Error(err)
@@ -614,6 +616,16 @@ func subtestLs(protos []string) func(*testing.T) {
 				t.Fatalf("wasnt expecting protocol %s", tok)
 			}
 		}
+	}
+	return func(t *testing.T) {
+		test(t, func(rwc io.ReadWriteCloser) (string, error) {
+			proto, _, err := mr.Negotiate(rwc)
+			return proto, err
+		})
+		test(t, func(rwc io.ReadWriteCloser) (string, error) {
+			_, proto, _, err := mr.NegotiateLazy(rwc)
+			return proto, err
+		})
 	}
 }
 
