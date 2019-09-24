@@ -3,6 +3,7 @@ package multistream
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"io"
 	"math/big"
@@ -168,7 +169,7 @@ again:
 
 	werrCh := make(chan error, 1)
 	go func() {
-		myselect := []byte("select:" + string(mynonce))
+		myselect := []byte("select:" + base64.StdEncoding.EncodeToString(mynonce))
 		err := delimWriteBuffered(rwc, myselect)
 		werrCh <- err
 	}()
@@ -192,7 +193,10 @@ again:
 		return "", false, err
 	}
 
-	peernonce := []byte(peerselect[7:])
+	peernonce, err := base64.StdEncoding.DecodeString(peerselect[7:])
+	if err != nil {
+		return "", false, err
+	}
 
 	var mybig, peerbig big.Int
 	var iamserver bool
