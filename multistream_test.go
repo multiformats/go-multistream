@@ -119,19 +119,19 @@ func TestNegLazyStressRead(t *testing.T) {
 		for rwc := range listener {
 			m, selected, _, err := mux.NegotiateLazy(rwc)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 				return
 			}
 
 			if selected != "/a" {
-				t.Error("incorrect protocol selected")
+				t.Fatal("incorrect protocol selected")
 				return
 			}
 
 			buf := make([]byte, len(message))
 			_, err = io.ReadFull(m, buf)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 				return
 			}
 
@@ -172,24 +172,24 @@ func TestNegLazyStressWrite(t *testing.T) {
 		for rwc := range listener {
 			m, selected, _, err := mux.NegotiateLazy(rwc)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 				return
 			}
 
 			if selected != "/a" {
-				t.Error("incorrect protocol selected")
+				t.Fatal("incorrect protocol selected")
 				return
 			}
 
 			_, err = m.Read(nil)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 				return
 			}
 
 			_, err = m.Write(message)
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 				return
 			}
 
@@ -427,7 +427,9 @@ func TestHandleFunc(t *testing.T) {
 		return nil
 	})
 
+	ch := make(chan struct{})
 	go func() {
+		defer close(ch)
 		err := SelectProtoOrFail("/c", a)
 		if err != nil {
 			t.Error(err)
@@ -439,6 +441,7 @@ func TestHandleFunc(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	<-ch
 	verifyPipe(t, a, b)
 }
 
@@ -455,7 +458,9 @@ func TestAddHandlerOverride(t *testing.T) {
 		return nil
 	})
 
+	ch := make(chan struct{})
 	go func() {
+		defer close(ch)
 		err := SelectProtoOrFail("/foo", a)
 		if err != nil {
 			t.Error(err)
@@ -467,6 +472,7 @@ func TestAddHandlerOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	<-ch
 	verifyPipe(t, a, b)
 }
 
@@ -518,7 +524,7 @@ func TestLazyAndMuxWrite(t *testing.T) {
 	verifyPipe(t, a, lb)
 }
 
-func verifyPipe(t *testing.T, a, b io.ReadWriter) {
+func verifyPipe(t *testing.T, a, b io.ReadWriteCloser) {
 	mes := make([]byte, 1024)
 	rand.Read(mes)
 	go func() {
@@ -527,7 +533,7 @@ func verifyPipe(t *testing.T, a, b io.ReadWriter) {
 	}()
 
 	buf := make([]byte, len(mes))
-	n, err := a.Read(buf)
+	n, err := io.ReadFull(a, buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,10 +542,10 @@ func verifyPipe(t *testing.T, a, b io.ReadWriter) {
 	}
 
 	if string(buf) != string(mes) {
-		t.Fatal("somehow read wrong message")
+		t.Fatalf("somehow read wrong message, expected: %x, was: %x", mes, buf)
 	}
 
-	n, err = b.Read(buf)
+	n, err = io.ReadFull(b, buf)
 	if err != nil {
 		t.Fatal(err)
 	}
