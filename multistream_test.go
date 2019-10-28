@@ -574,13 +574,19 @@ func TestTooLargeMessage(t *testing.T) {
 }
 
 func TestLs(t *testing.T) {
-	t.Run("none", subtestLs(nil))
-	t.Run("one", subtestLs([]string{"a"}))
-	t.Run("many", subtestLs([]string{"a", "b", "c", "d", "e"}))
-	t.Run("empty", subtestLs([]string{"", "a"}))
+	t.Run("none-eager", subtestLs(nil, false))
+	t.Run("one-eager", subtestLs([]string{"a"}, false))
+	t.Run("many-eager", subtestLs([]string{"a", "b", "c", "d", "e"}, false))
+	t.Run("empty-eager", subtestLs([]string{"", "a"}, false))
+
+	// lazy variants
+	t.Run("none-lazy", subtestLs(nil, true))
+	t.Run("one-lazy", subtestLs([]string{"a"}, true))
+	t.Run("many-lazy", subtestLs([]string{"a", "b", "c", "d", "e"}, true))
+	t.Run("empty-lazy", subtestLs([]string{"", "a"}, true))
 }
 
-func subtestLs(protos []string) func(*testing.T) {
+func subtestLs(protos []string, lazy bool) func(*testing.T) {
 	return func(t *testing.T) {
 		mr := NewMultistreamMuxer()
 		mset := make(map[string]bool)
@@ -594,7 +600,14 @@ func subtestLs(protos []string) func(*testing.T) {
 		go func() {
 			defer close(done)
 
-			proto, _, err := mr.Negotiate(c2)
+			var proto string
+			var err error
+			if lazy {
+				_, proto, _, err = mr.NegotiateLazy(c2)
+			} else {
+				proto, _, err = mr.Negotiate(c2)
+			}
+
 			c2.Close()
 			if err != io.EOF {
 				t.Error(err)

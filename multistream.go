@@ -252,8 +252,13 @@ loop:
 
 		switch tok {
 		case "ls":
+			protos, err := msm.encodeLocalProtocols()
+			if err != nil {
+				rwc.Close()
+				return nil, "", nil, err
+			}
 			select {
-			case pval <- "ls":
+			case pval <- string(protos):
 			case err := <-writeErr:
 				rwc.Close()
 				return nil, "", nil, err
@@ -342,19 +347,27 @@ loop:
 // Ls implements the "ls" command which writes the list of
 // supported protocols to the given Writer.
 func (msm *MultistreamMuxer) Ls(w io.Writer) error {
-	buf := new(bytes.Buffer)
+	protos, err := msm.encodeLocalProtocols()
+	if err != nil {
+		return err
+	}
+	return delimWrite(w, protos)
+}
 
+// encodeLocalProtocols encodes the protocols this multistream-select router
+// handles, packed in a list of varint-delimited strings.
+func (msm *MultistreamMuxer) encodeLocalProtocols() ([]byte, error) {
+	buf := new(bytes.Buffer)
 	msm.handlerlock.RLock()
 	for _, h := range msm.handlers {
 		err := delimWrite(buf, []byte(h.AddName))
 		if err != nil {
 			msm.handlerlock.RUnlock()
-			return err
+			return nil, err
 		}
 	}
 	msm.handlerlock.RUnlock()
-
-	return delimWrite(w, buf.Bytes())
+	return buf.Bytes(), nil
 }
 
 // Handle performs protocol negotiation on a ReadWriteCloser
