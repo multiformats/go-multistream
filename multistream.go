@@ -205,6 +205,12 @@ func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (io.ReadWrite
 	writeErr := make(chan error, 1)
 	defer close(pval)
 
+	if clearFn, err := setDeadline(rwc); err != nil {
+		return nil, "", nil, err
+	} else {
+		defer clearFn()
+	}
+
 	lzc := &lazyServerConn{
 		con: rwc,
 	}
@@ -292,6 +298,12 @@ loop:
 // Negotiate performs protocol selection and returns the protocol name and
 // the matching handler function for it (or an error).
 func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (string, HandlerFunc, error) {
+	if clearFn, err := setDeadline(rwc); err != nil {
+		return "", nil, err
+	} else {
+		defer clearFn()
+	}
+
 	// Send our protocol ID
 	err := delimWriteBuffered(rwc, []byte(ProtocolID))
 	if err != nil {

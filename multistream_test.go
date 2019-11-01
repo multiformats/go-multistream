@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -682,5 +683,47 @@ func TestNegotiateFail(t *testing.T) {
 
 	if out != "foo" {
 		t.Fatal("got wrong protocol")
+	}
+}
+
+func TestInitiatorTimeout(t *testing.T) {
+	a, _ := newPipe(t)
+
+	var old time.Duration
+	old, NegotiationTimeout = NegotiationTimeout, 1*time.Second
+	defer func() { NegotiationTimeout = old }()
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("/a", func(p string, rwc io.ReadWriteCloser) error {
+		t.Error("shouldnt execute this handler")
+		return nil
+	})
+
+	ch := make(chan error)
+	go func() {
+		defer close(ch)
+		err := SelectProtoOrFail("/a", a)
+		ch <- err
+	}()
+
+	// nothing is reading from b.
+
+	if err := <-ch; !strings.Contains(err.Error(), "i/o timeout") {
+		t.Fatal("expected a timeout error")
+	}
+}
+
+func TestResponderTimeout(t *testing.T) {
+	_, b := newPipe(t)
+
+	var old time.Duration
+	old, NegotiationTimeout = NegotiationTimeout, 1*time.Second
+	defer func() { NegotiationTimeout = old }()
+
+	mux := NewMultistreamMuxer()
+	// nothing is sending from a.
+	err := mux.Handle(b)
+	if !strings.Contains(err.Error(), "i/o timeout") {
+		t.Fatal("expected a timeout error")
 	}
 }

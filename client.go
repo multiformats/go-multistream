@@ -19,6 +19,54 @@ var ErrNoProtocols = errors.New("no protocols specified")
 // on this ReadWriteCloser. It returns an error if, for example,
 // the muxer does not know how to handle this protocol.
 func SelectProtoOrFail(proto string, rwc io.ReadWriteCloser) error {
+	if clearFn, err := setDeadline(rwc); err != nil {
+		return err
+	} else {
+		defer clearFn()
+	}
+	return selectSingleProtocol(proto, rwc)
+}
+
+// SelectOneOf will perform handshakes with the protocols on the given slice
+// until it finds one which is supported by the muxer.
+func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
+	if len(protos) == 0 {
+		return "", ErrNoProtocols
+	}
+
+	if clearFn, err := setDeadline(rwc); err != nil {
+		return "", err
+	} else {
+		defer clearFn()
+	}
+
+	// Use SelectProtoOrFail to pipeline the /multistream/1.0.0 handshake
+	// with an attempt to negotiate the first protocol. If that fails, we
+	// can continue negotiating the rest of the protocols normally.
+	//
+	// This saves us a round trip.
+	switch err := selectSingleProtocol(protos[0], rwc); err {
+	case nil:
+		return protos[0], nil
+	case ErrNotSupported: // try others
+	default:
+		return "", err
+	}
+	for _, p := range protos[1:] {
+		err := trySelect(p, rwc)
+		switch err {
+		case nil:
+			return p, nil
+		case ErrNotSupported:
+		default:
+			return "", err
+		}
+	}
+	return "", ErrNotSupported
+}
+
+// selectSingleProtocol attempts to select a single protocol.
+func selectSingleProtocol(proto string, rwc io.ReadWriteCloser) error {
 	errCh := make(chan error, 1)
 	go func() {
 		var buf bytes.Buffer
@@ -40,38 +88,6 @@ func SelectProtoOrFail(proto string, rwc io.ReadWriteCloser) error {
 		return err2
 	}
 	return nil
-}
-
-// SelectOneOf will perform handshakes with the protocols on the given slice
-// until it finds one which is supported by the muxer.
-func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
-	if len(protos) == 0 {
-		return "", ErrNoProtocols
-	}
-
-	// Use SelectProtoOrFail to pipeline the /multistream/1.0.0 handshake
-	// with an attempt to negotiate the first protocol. If that fails, we
-	// can continue negotiating the rest of the protocols normally.
-	//
-	// This saves us a round trip.
-	switch err := SelectProtoOrFail(protos[0], rwc); err {
-	case nil:
-		return protos[0], nil
-	case ErrNotSupported: // try others
-	default:
-		return "", err
-	}
-	for _, p := range protos[1:] {
-		err := trySelect(p, rwc)
-		switch err {
-		case nil:
-			return p, nil
-		case ErrNotSupported:
-		default:
-			return "", err
-		}
-	}
-	return "", ErrNotSupported
 }
 
 func handshake(rw io.ReadWriter) error {
