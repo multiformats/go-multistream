@@ -86,7 +86,7 @@ func handshake(rw io.ReadWriter) error {
 	return <-errCh
 }
 
-func readMultistreamHeader(r io.ReadWriter) error {
+func readMultistreamHeader(r io.Reader) error {
 	tok, err := ReadNextToken(r)
 	if err != nil {
 		return err
@@ -106,8 +106,8 @@ func trySelect(proto string, rwc io.ReadWriteCloser) error {
 	return readProto(proto, rwc)
 }
 
-func readProto(proto string, rw io.ReadWriter) error {
-	tok, err := ReadNextToken(rw)
+func readProto(proto string, r io.Reader) error {
+	tok, err := ReadNextToken(r)
 	if err != nil {
 		return err
 	}

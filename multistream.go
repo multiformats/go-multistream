@@ -381,10 +381,10 @@ func (msm *MultistreamMuxer) Handle(rwc io.ReadWriteCloser) error {
 	return h(p, rwc)
 }
 
-// ReadNextToken extracts a token from a ReadWriter. It is used during
+// ReadNextToken extracts a token from a Reader. It is used during
 // protocol negotiation and returns a string.
-func ReadNextToken(rw io.ReadWriter) (string, error) {
-	tok, err := ReadNextTokenBytes(rw)
+func ReadNextToken(r io.Reader) (string, error) {
+	tok, err := ReadNextTokenBytes(r)
 	if err != nil {
 		return "", err
 	}
@@ -392,18 +392,14 @@ func ReadNextToken(rw io.ReadWriter) (string, error) {
 	return string(tok), nil
 }
 
-// ReadNextTokenBytes extracts a token from a ReadWriter. It is used
+// ReadNextTokenBytes extracts a token from a Reader. It is used
 // during protocol negotiation and returns a byte slice.
-func ReadNextTokenBytes(rw io.ReadWriter) ([]byte, error) {
-	data, err := lpReadBuf(rw)
+func ReadNextTokenBytes(r io.Reader) ([]byte, error) {
+	data, err := lpReadBuf(r)
 	switch err {
 	case nil:
 		return data, nil
 	case ErrTooLarge:
-		err := delimWriteBuffered(rw, []byte("messages over 64k are not allowed"))
-		if err != nil {
-			return nil, err
-		}
 		return nil, ErrTooLarge
 	default:
 		return nil, err
