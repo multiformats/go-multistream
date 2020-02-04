@@ -11,6 +11,42 @@ import (
 	"time"
 )
 
+type rwcStrict struct {
+	writing, reading bool
+	t                *testing.T
+	rwc              io.ReadWriteCloser
+}
+
+func newRwcStrict(t *testing.T, rwc io.ReadWriteCloser) io.ReadWriteCloser {
+	return &rwcStrict{t: t, rwc: rwc}
+}
+
+func (s *rwcStrict) Read(b []byte) (int, error) {
+	if s.reading {
+		s.t.Error("concurrent read")
+		return 0, fmt.Errorf("concurrent read")
+	}
+	s.reading = true
+	n, err := s.rwc.Read(b)
+	s.reading = false
+	return n, err
+}
+
+func (s *rwcStrict) Write(b []byte) (int, error) {
+	if s.writing {
+		s.t.Error("concurrent write")
+		return 0, fmt.Errorf("concurrent write")
+	}
+	s.writing = true
+	n, err := s.rwc.Write(b)
+	s.writing = false
+	return n, err
+}
+
+func (s *rwcStrict) Close() error {
+	return s.rwc.Close()
+}
+
 func newPipe(t *testing.T) (io.ReadWriteCloser, io.ReadWriteCloser) {
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -28,7 +64,7 @@ func newPipe(t *testing.T) (io.ReadWriteCloser, io.ReadWriteCloser) {
 	if err != nil {
 		t.Error(err)
 	}
-	return <-cchan, c
+	return newRwcStrict(t, <-cchan), newRwcStrict(t, c)
 }
 
 func TestProtocolNegotiation(t *testing.T) {
@@ -570,6 +606,21 @@ func TestTooLargeMessage(t *testing.T) {
 	_, err = ReadNextToken(buf)
 	if err == nil {
 		t.Fatal("should have failed to read message larger than 64k")
+	}
+}
+
+// this exercises https://github.com/libp2p/go-libp2p-pnet/issues/31
+func TestLargeMessageNegotiate(t *testing.T) {
+	mes := make([]byte, 100*1024)
+
+	a, b := newPipe(t)
+	err := delimWrite(a, mes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = SelectProtoOrFail("/foo/bar", b)
+	if err == nil {
+		t.Error("should have failed to read large message")
 	}
 }
 
