@@ -4,6 +4,15 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
+)
+
+// handshakeState is a bitmask.
+const (
+	handshakeStateInitial int32 = 0
+	handshakeStateStarted       = 1 << iota
+	handshakeStateWriteDone
+	handshakeStateReadDone
 )
 
 // Multistream represents in essense a ReadWriteCloser, or a single
@@ -16,20 +25,24 @@ type Multistream interface {
 // NewMSSelect returns a new Multistream which is able to perform
 // protocol selection with a MultistreamMuxer.
 func NewMSSelect(c io.ReadWriteCloser, proto string) Multistream {
-	return &lazyClientConn{
-		protos: []string{ProtocolID, proto},
-		con:    c,
-	}
+	return newMultistream(c, ProtocolID, proto)
 }
 
 // NewMultistream returns a multistream for the given protocol. This will not
 // perform any protocol selection. If you are using a MultistreamMuxer, use
 // NewMSSelect.
 func NewMultistream(c io.ReadWriteCloser, proto string) Multistream {
-	return &lazyClientConn{
-		protos: []string{proto},
+	return newMultistream(c, proto)
+}
+
+func newMultistream(c io.ReadWriteCloser, protos ...string) Multistream {
+	lc := &lazyClientConn{
+		protos: protos,
 		con:    c,
 	}
+	lc.waitWrite.Add(1)
+	lc.waitRead.Add(1)
+	return lc
 }
 
 // lazyClientConn is a ReadWriteCloser adapter that lazily negotiates a protocol
@@ -39,6 +52,9 @@ func NewMultistream(c io.ReadWriteCloser, proto string) Multistream {
 // simply assumes the negotiation went successfully and starts writing data.
 // See: https://github.com/multiformats/go-multistream/issues/20
 type lazyClientConn struct {
+	handshakeState      int32
+	waitWrite, waitRead sync.WaitGroup
+
 	// Used to ensure we only trigger the write half of the handshake once.
 	rhandshakeOnce sync.Once
 	rerr           error
@@ -61,10 +77,23 @@ type lazyClientConn struct {
 //
 // It returns an error if the read half of the handshake fails.
 func (l *lazyClientConn) Read(b []byte) (int, error) {
-	l.rhandshakeOnce.Do(func() {
-		go l.whandshakeOnce.Do(l.doWriteHandshake)
-		l.doReadHandshake()
-	})
+	// Do we need to handshake?
+	if state := atomic.LoadInt32(&l.handshakeState); state&handshakeStateReadDone == 0 {
+		// Ok, read handshake isn't done. Should we start the handshake?
+		if state == handshakeStateInitial && atomic.CompareAndSwapInt32(
+			&l.handshakeState,
+			handshakeStateInitial,
+			handshakeStateStarted,
+		) {
+			// Yes, state was "initial" and we transitioned to "started".
+			go l.doWriteHandshake()
+			l.doReadHandshake()
+		} else {
+			// No, just wait.
+			l.waitRead.Wait()
+		}
+	}
+
 	if l.rerr != nil {
 		return 0, l.rerr
 	}
@@ -76,6 +105,11 @@ func (l *lazyClientConn) Read(b []byte) (int, error) {
 }
 
 func (l *lazyClientConn) doReadHandshake() {
+	defer func() {
+		atomic.AddInt32(&l.handshakeState, handshakeStateReadDone)
+		l.waitRead.Done()
+	}()
+
 	for _, proto := range l.protos {
 		// read protocol
 		tok, err := ReadNextToken(l.con)
@@ -98,7 +132,11 @@ func (l *lazyClientConn) doWriteHandshake() {
 // Perform the write handshake but *also* write some extra data.
 func (l *lazyClientConn) doWriteHandshakeWithData(extra []byte) int {
 	buf := getWriter(l.con)
-	defer putWriter(buf)
+	defer func() {
+		putWriter(buf)
+		atomic.AddInt32(&l.handshakeState, handshakeStateWriteDone)
+		l.waitWrite.Done()
+	}()
 
 	for _, proto := range l.protos {
 		l.werr = delimWrite(buf, []byte(proto))
@@ -127,13 +165,27 @@ func (l *lazyClientConn) doWriteHandshakeWithData(extra []byte) int {
 // stream is actually write only).
 func (l *lazyClientConn) Write(b []byte) (int, error) {
 	n := 0
-	l.whandshakeOnce.Do(func() {
-		go l.rhandshakeOnce.Do(l.doReadHandshake)
-		n = l.doWriteHandshakeWithData(b)
-	})
+	// Do we need to handshake?
+	if state := atomic.LoadInt32(&l.handshakeState); state&handshakeStateWriteDone == 0 {
+		// Ok, read handshake isn't done. Should we start the handshake?
+		if state == handshakeStateInitial && atomic.CompareAndSwapInt32(
+			&l.handshakeState,
+			handshakeStateInitial,
+			handshakeStateStarted,
+		) {
+			// Yes, state was "initial" and we transitioned to "started".
+			go l.doReadHandshake()
+			n = l.doWriteHandshakeWithData(b)
+		} else {
+			// No, just wait.
+			l.waitWrite.Wait()
+		}
+	}
+
 	if l.werr != nil || n > 0 {
 		return n, l.werr
 	}
+
 	return l.con.Write(b)
 }
 
