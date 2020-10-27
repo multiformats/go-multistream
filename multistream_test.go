@@ -109,7 +109,7 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
 
-	var ac LazyConn
+	var ac io.ReadWriteCloser
 	done := make(chan struct{})
 	go func() {
 		m, selected, _, err := mux.NegotiateLazy(a)

@@ -209,7 +209,7 @@ func (msm *MultistreamMuxer) findHandler(proto string) *Handler {
 // a multistream, the protocol used, the handler and an error. It is lazy
 // because the write-handshake is performed on a subroutine, allowing this
 // to return before that handshake is completed.
-func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (LazyConn, string, HandlerFunc, error) {
+func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (io.ReadWriteCloser, string, HandlerFunc, error) {
 	pval := make(chan string, 1)
 	writeErr := make(chan error, 1)
 	defer close(pval)
