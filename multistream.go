@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+
 	"io"
 	"sync"
 
@@ -49,6 +50,13 @@ type MultistreamMuxer struct {
 // NewMultistreamMuxer creates a muxer.
 func NewMultistreamMuxer() *MultistreamMuxer {
 	return new(MultistreamMuxer)
+}
+
+// LazyConn is the connection type returned by the lazy negotiation functions.
+type LazyConn interface {
+	io.ReadWriteCloser
+	// Flush flushes the lazy negotiation, if any.
+	Flush() error
 }
 
 func writeUvarint(w io.Writer, i uint64) error {
