@@ -150,7 +150,7 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 }
 
 func TestNegLazyStressRead(t *testing.T) {
-	count := 1000
+	const count = 100
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -203,7 +203,7 @@ func TestNegLazyStressRead(t *testing.T) {
 }
 
 func TestNegLazyStressWrite(t *testing.T) {
-	count := 1000
+	const count = 100
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
