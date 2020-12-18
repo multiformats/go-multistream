@@ -50,21 +50,29 @@ func (s *rwcStrict) Close() error {
 func newPipe(t *testing.T) (io.ReadWriteCloser, io.ReadWriteCloser) {
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	cchan := make(chan net.Conn)
+	errChan := make(chan error, 1)
 	go func() {
 		c, err := ln.Accept()
 		if err != nil {
-			t.Error(err)
+			errChan <- err
+			return
 		}
 		cchan <- c
 	}()
 	c, err := net.Dial("tcp", ln.Addr().String())
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-	return newRwcStrict(t, <-cchan), newRwcStrict(t, c)
+	select {
+	case err := <-errChan:
+		t.Fatal(err)
+		return nil, nil
+	case rwc := <-cchan:
+		return newRwcStrict(t, rwc), newRwcStrict(t, c)
+	}
 }
 
 func TestProtocolNegotiation(t *testing.T) {
@@ -142,7 +150,7 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 }
 
 func TestNegLazyStressRead(t *testing.T) {
-	count := 1000
+	const count = 100
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -195,7 +203,7 @@ func TestNegLazyStressRead(t *testing.T) {
 }
 
 func TestNegLazyStressWrite(t *testing.T) {
-	count := 1000
+	const count = 100
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
