@@ -762,7 +762,7 @@ func TestSimopenClientServer(t *testing.T) {
 		close(done)
 	}()
 
-	proto, server, err := SelectWithSimopen([]string{"/a"}, b)
+	proto, server, err := SelectWithSimopenOrFail([]string{"/a"}, b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -799,7 +799,7 @@ func TestSimopenClientServerFail(t *testing.T) {
 		close(done)
 	}()
 
-	_, _, err := SelectWithSimopen([]string{"/b"}, b)
+	_, _, err := SelectWithSimopenOrFail([]string{"/b"}, b)
 	if err != ErrNotSupported {
 		t.Fatal(err)
 	}
@@ -817,7 +817,7 @@ func TestSimopenClientClient(t *testing.T) {
 
 	done := make(chan bool, 1)
 	go func() {
-		proto, server, err := SelectWithSimopen([]string{"/a"}, b)
+		proto, server, err := SelectWithSimopenOrFail([]string{"/a"}, b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -827,7 +827,7 @@ func TestSimopenClientClient(t *testing.T) {
 		done <- server
 	}()
 
-	proto, servera, err := SelectWithSimopen([]string{"/a"}, a)
+	proto, servera, err := SelectWithSimopenOrFail([]string{"/a"}, a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -855,7 +855,7 @@ func TestSimopenClientClient2(t *testing.T) {
 
 	done := make(chan bool, 1)
 	go func() {
-		proto, server, err := SelectWithSimopen([]string{"/a", "/b"}, b)
+		proto, server, err := SelectWithSimopenOrFail([]string{"/a", "/b"}, b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -865,7 +865,7 @@ func TestSimopenClientClient2(t *testing.T) {
 		done <- server
 	}()
 
-	proto, servera, err := SelectWithSimopen([]string{"/b"}, a)
+	proto, servera, err := SelectWithSimopenOrFail([]string{"/b"}, a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -893,7 +893,7 @@ func TestSimopenClientClientFail(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_, _, err := SelectWithSimopen([]string{"/a"}, b)
+		_, _, err := SelectWithSimopenOrFail([]string{"/a"}, b)
 		if err != ErrNotSupported {
 			t.Error(err)
 		}
@@ -901,7 +901,7 @@ func TestSimopenClientClientFail(t *testing.T) {
 		close(done)
 	}()
 
-	_, _, err := SelectWithSimopen([]string{"/b"}, a)
+	_, _, err := SelectWithSimopenOrFail([]string{"/b"}, a)
 	if err != ErrNotSupported {
 		t.Fatal(err)
 	}

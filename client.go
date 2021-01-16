@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"math/big"
 	"strings"
 )
 
@@ -26,8 +25,10 @@ func SelectProtoOrFail(proto string, rwc io.ReadWriteCloser) error {
 	errCh := make(chan error, 1)
 	go func() {
 		var buf bytes.Buffer
-		delimWrite(&buf, []byte(ProtocolID))
-		delimWrite(&buf, []byte(proto))
+		if err := delitmWriteAll(&buf, []byte(ProtocolID), []byte(proto)); err != nil {
+			errCh <- err
+			return
+		}
 		_, err := io.Copy(rwc, &buf)
 		errCh <- err
 	}()
@@ -65,22 +66,12 @@ func SelectOneOf(protos []string, rwc io.ReadWriteCloser) (string, error) {
 	default:
 		return "", err
 	}
-	for _, p := range protos[1:] {
-		err := trySelect(p, rwc)
-		switch err {
-		case nil:
-			return p, nil
-		case ErrNotSupported:
-		default:
-			return "", err
-		}
-	}
-	return "", ErrNotSupported
+	return selectProtosOrFail(protos[1:], rwc)
 }
 
 // Performs protocol negotiation with the simultaneous open extension; the returned boolean
 // indicator will be true if we should act as a server.
-func SelectWithSimopen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
+func SelectWithSimopenOrFail(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
 	if len(protos) == 0 {
 		return "", false, ErrNoProtocols
 	}
@@ -88,9 +79,11 @@ func SelectWithSimopen(protos []string, rwc io.ReadWriteCloser) (string, bool, e
 	werrCh := make(chan error, 1)
 	go func() {
 		var buf bytes.Buffer
-		delimWrite(&buf, []byte(ProtocolID))
-		delimWrite(&buf, []byte("iamclient"))
-		delimWrite(&buf, []byte(protos[0]))
+		if err := delitmWriteAll(&buf, []byte(ProtocolID), []byte("iamclient"), []byte(protos[0])); err != nil {
+			werrCh <- err
+			return
+		}
+
 		_, err := io.Copy(rwc, &buf)
 		werrCh <- err
 	}()
@@ -139,28 +132,27 @@ func clientOpen(protos []string, rwc io.ReadWriteCloser) (string, error) {
 	case protos[0]:
 		return tok, nil
 	case "na":
-		// try the other protos
-		for _, p := range protos[1:] {
-			err = trySelect(p, rwc)
-			switch err {
-			case nil:
-				return p, nil
-			case ErrNotSupported:
-			default:
-				return "", err
-			}
-		}
-
-		return "", ErrNotSupported
+		return selectProtosOrFail(protos[1:], rwc)
 	default:
 		return "", errors.New("unexpected response: " + tok)
 	}
 }
 
-func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
-	retries := 3
+func selectProtosOrFail(protos []string, rwc io.ReadWriteCloser) (string, error) {
+	for _, p := range protos {
+		err := trySelect(p, rwc)
+		switch err {
+		case nil:
+			return p, nil
+		case ErrNotSupported:
+		default:
+			return "", err
+		}
+	}
+	return "", ErrNotSupported
+}
 
-again:
+func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
 	mynonce := make([]byte, 32)
 	_, err := rand.Read(mynonce)
 	if err != nil {
@@ -181,7 +173,7 @@ again:
 			return "", false, err
 		}
 
-		// this skips pipelined protocol negoatiation
+		// this skips pipelined protocol negotiation
 		// keep reading until the token starts with select:
 		if strings.HasPrefix(tok, "select:") {
 			peerselect = tok
@@ -198,12 +190,8 @@ again:
 		return "", false, err
 	}
 
-	var mybig, peerbig big.Int
 	var iamserver bool
-	mybig.SetBytes(mynonce)
-	peerbig.SetBytes(peernonce)
-
-	switch mybig.Cmp(&peerbig) {
+	switch bytes.Compare(mynonce, peernonce) {
 	case -1:
 		// peer nonce bigger, he is client
 		iamserver = true
@@ -213,12 +201,6 @@ again:
 		iamserver = false
 
 	case 0:
-		// wtf, the world is ending! try again.
-		if retries > 0 {
-			retries--
-			goto again
-		}
-
 		return "", false, errors.New("failed client selection; identical nonces!")
 
 	default:
@@ -301,19 +283,7 @@ func simOpenSelectClient(protos []string, rwc io.ReadWriteCloser) (string, error
 		return "", err
 	}
 
-	for _, p := range protos {
-		err = trySelect(p, rwc)
-		switch err {
-		case nil:
-			return p, nil
-
-		case ErrNotSupported:
-		default:
-			return "", err
-		}
-	}
-
-	return "", ErrNotSupported
+	return selectProtosOrFail(protos, rwc)
 }
 
 func handshake(rw io.ReadWriter) error {
