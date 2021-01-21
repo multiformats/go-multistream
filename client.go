@@ -17,6 +17,10 @@ var ErrNotSupported = errors.New("protocol not supported")
 // specified.
 var ErrNoProtocols = errors.New("no protocols specified")
 
+var (
+	tieBreakerPrefix = "select:"
+)
+
 // SelectProtoOrFail performs the initial multistream handshake
 // to inform the muxer of the protocol that will be used to communicate
 // on this ReadWriteCloser. It returns an error if, for example,
@@ -161,31 +165,32 @@ func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
 
 	werrCh := make(chan error, 1)
 	go func() {
-		myselect := []byte("select:" + base64.StdEncoding.EncodeToString(mynonce))
+		myselect := []byte(tieBreakerPrefix + base64.StdEncoding.EncodeToString(mynonce))
 		err := delimWriteBuffered(rwc, myselect)
 		werrCh <- err
 	}()
 
-	var peerselect string
-	for {
-		tok, err := ReadNextToken(rwc)
-		if err != nil {
-			return "", false, err
-		}
+	// skip exactly one protocol
+	// see https://github.com/multiformats/go-multistream/pull/42#discussion_r558757135
+	_, err = ReadNextToken(rwc)
+	if err != nil {
+		return "", false, err
+	}
 
-		// this skips pipelined protocol negotiation
-		// keep reading until the token starts with select:
-		if strings.HasPrefix(tok, "select:") {
-			peerselect = tok
-			break
-		}
+	// read the tie breaker nonce
+	tok, err := ReadNextToken(rwc)
+	if err != nil {
+		return "", false, err
+	}
+	if !strings.HasPrefix(tok, tieBreakerPrefix) {
+		return "", false, errors.New("tie breaker nonce not sent with the correct prefix")
 	}
 
 	if err = <-werrCh; err != nil {
 		return "", false, err
 	}
 
-	peernonce, err := base64.StdEncoding.DecodeString(peerselect[7:])
+	peernonce, err := base64.StdEncoding.DecodeString(tok[7:])
 	if err != nil {
 		return "", false, err
 	}
