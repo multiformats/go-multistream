@@ -3,9 +3,10 @@ package multistream
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -17,8 +18,10 @@ var ErrNotSupported = errors.New("protocol not supported")
 // specified.
 var ErrNoProtocols = errors.New("no protocols specified")
 
-var (
+const (
 	tieBreakerPrefix = "select:"
+	initiator        = "initiator"
+	responder        = "responder"
 )
 
 // SelectProtoOrFail performs the initial multistream handshake
@@ -157,15 +160,16 @@ func selectProtosOrFail(protos []string, rwc io.ReadWriteCloser) (string, error)
 }
 
 func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
-	mynonce := make([]byte, 32)
-	_, err := rand.Read(mynonce)
+	randBytes := make([]byte, 8)
+	_, err := rand.Read(randBytes)
 	if err != nil {
 		return "", false, err
 	}
+	myNonce := binary.LittleEndian.Uint64(randBytes)
 
 	werrCh := make(chan error, 1)
 	go func() {
-		myselect := []byte(tieBreakerPrefix + base64.StdEncoding.EncodeToString(mynonce))
+		myselect := []byte(tieBreakerPrefix + strconv.FormatUint(myNonce, 10))
 		err := delimWriteBuffered(rwc, myselect)
 		werrCh <- err
 	}()
@@ -190,26 +194,20 @@ func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
 		return "", false, err
 	}
 
-	peernonce, err := base64.StdEncoding.DecodeString(tok[7:])
+	peerNone, err := strconv.ParseUint(tok[len(tieBreakerPrefix):], 10, 64)
 	if err != nil {
 		return "", false, err
 	}
 
 	var iamserver bool
-	switch bytes.Compare(mynonce, peernonce) {
-	case -1:
+	if peerNone > myNonce {
 		// peer nonce bigger, he is client
 		iamserver = true
-
-	case 1:
+	} else if peerNone < myNonce {
 		// my nonce bigger, i am client
 		iamserver = false
-
-	case 0:
+	} else {
 		return "", false, errors.New("failed client selection; identical nonces!")
-
-	default:
-		return "", false, errors.New("wut? bigint.Cmp returned unexpected value")
 	}
 
 	var proto string
@@ -225,7 +223,7 @@ func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
 func simOpenSelectServer(protos []string, rwc io.ReadWriteCloser) (string, error) {
 	werrCh := make(chan error, 1)
 	go func() {
-		err := delimWriteBuffered(rwc, []byte("responder"))
+		err := delimWriteBuffered(rwc, []byte(responder))
 		werrCh <- err
 	}()
 
@@ -233,7 +231,7 @@ func simOpenSelectServer(protos []string, rwc io.ReadWriteCloser) (string, error
 	if err != nil {
 		return "", err
 	}
-	if tok != "initiator" {
+	if tok != initiator {
 		return "", errors.New("unexpected response: " + tok)
 	}
 	if err = <-werrCh; err != nil {
@@ -273,7 +271,7 @@ func simOpenSelectServer(protos []string, rwc io.ReadWriteCloser) (string, error
 func simOpenSelectClient(protos []string, rwc io.ReadWriteCloser) (string, error) {
 	werrCh := make(chan error, 1)
 	go func() {
-		err := delimWriteBuffered(rwc, []byte("initiator"))
+		err := delimWriteBuffered(rwc, []byte(initiator))
 		werrCh <- err
 	}()
 
@@ -281,7 +279,7 @@ func simOpenSelectClient(protos []string, rwc io.ReadWriteCloser) (string, error
 	if err != nil {
 		return "", err
 	}
-	if tok != "responder" {
+	if tok != responder {
 		return "", errors.New("unexpected response: " + tok)
 	}
 	if err = <-werrCh; err != nil {
