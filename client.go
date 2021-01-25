@@ -194,21 +194,17 @@ func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
 		return "", false, err
 	}
 
-	peerNone, err := strconv.ParseUint(tok[len(tieBreakerPrefix):], 10, 64)
+	peerNonce, err := strconv.ParseUint(tok[len(tieBreakerPrefix):], 10, 64)
 	if err != nil {
 		return "", false, err
 	}
 
 	var iamserver bool
-	if peerNone > myNonce {
-		// peer nonce bigger, he is client
-		iamserver = true
-	} else if peerNone < myNonce {
-		// my nonce bigger, i am client
-		iamserver = false
-	} else {
+
+	if peerNonce == myNonce {
 		return "", false, errors.New("failed client selection; identical nonces!")
 	}
+	iamserver = peerNonce > myNonce
 
 	var proto string
 	if iamserver {
