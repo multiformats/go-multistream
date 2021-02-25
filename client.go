@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -160,6 +161,7 @@ func selectProtosOrFail(protos []string, rwc io.ReadWriteCloser) (string, error)
 }
 
 func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
+	fmt.Println("\n Multistream saw a SimOpen")
 	randBytes := make([]byte, 8)
 	_, err := rand.Read(randBytes)
 	if err != nil {
