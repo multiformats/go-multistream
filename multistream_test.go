@@ -163,24 +163,24 @@ func TestNegLazyStressRead(t *testing.T) {
 		for rwc := range listener {
 			m, selected, _, err := mux.NegotiateLazy(rwc)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 				return
 			}
 
 			if selected != "/a" {
-				t.Fatal("incorrect protocol selected")
+				t.Error("incorrect protocol selected")
 				return
 			}
 
 			buf := make([]byte, len(message))
 			_, err = io.ReadFull(m, buf)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 				return
 			}
 
 			if !bytes.Equal(message, buf) {
-				t.Fatal("incorrect output: ", buf)
+				t.Error("incorrect output: ", buf)
 			}
 			rwc.Close()
 		}
@@ -216,24 +216,24 @@ func TestNegLazyStressWrite(t *testing.T) {
 		for rwc := range listener {
 			m, selected, _, err := mux.NegotiateLazy(rwc)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 				return
 			}
 
 			if selected != "/a" {
-				t.Fatal("incorrect protocol selected")
+				t.Error("incorrect protocol selected")
 				return
 			}
 
 			_, err = m.Read(nil)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 				return
 			}
 
 			_, err = m.Write(message)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 				return
 			}
 
@@ -270,19 +270,19 @@ func TestInvalidProtocol(t *testing.T) {
 		defer close(done)
 		_, _, err := mux.Negotiate(a)
 		if err != ErrIncorrectVersion {
-			t.Fatal("expected incorrect version error here")
+			t.Error("expected incorrect version error here")
 		}
 	}()
 
 	ms := NewMultistream(b, "/THIS_IS_WRONG")
 	_, err := ms.Read([]byte{0})
 	if err == nil {
-		t.Fatal("this read should not succeed")
+		t.Error("this read should not succeed")
 	}
 
 	select {
 	case <-time.After(time.Second):
-		t.Fatal("protocol negotiation didnt complete")
+		t.Error("protocol negotiation didnt complete")
 	case <-done:
 	}
 }
@@ -754,10 +754,10 @@ func TestSimopenClientServer(t *testing.T) {
 	go func() {
 		selected, _, err := mux.Negotiate(a)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if selected != "/a" {
-			t.Fatal("incorrect protocol selected")
+			t.Error("incorrect protocol selected")
 		}
 		close(done)
 	}()
@@ -794,7 +794,7 @@ func TestSimopenClientServerFail(t *testing.T) {
 	go func() {
 		_, _, err := mux.Negotiate(a)
 		if err != io.EOF {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		close(done)
 	}()
@@ -819,10 +819,10 @@ func TestSimopenClientClient(t *testing.T) {
 	go func() {
 		proto, server, err := SelectWithSimopenOrFail([]string{"/a"}, b)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if proto != "/a" {
-			t.Fatal("wrong protocol selected")
+			t.Error("wrong protocol selected")
 		}
 		done <- server
 	}()
@@ -857,10 +857,10 @@ func TestSimopenClientClient2(t *testing.T) {
 	go func() {
 		proto, server, err := SelectWithSimopenOrFail([]string{"/a", "/b"}, b)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if proto != "/b" {
-			t.Fatal("wrong protocol selected")
+			t.Error("wrong protocol selected")
 		}
 		done <- server
 	}()

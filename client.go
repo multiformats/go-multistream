@@ -202,7 +202,7 @@ func simOpen(protos []string, rwc io.ReadWriteCloser) (string, bool, error) {
 	var iamserver bool
 
 	if peerNonce == myNonce {
-		return "", false, errors.New("failed client selection; identical nonces!")
+		return "", false, errors.New("failed client selection; identical nonces")
 	}
 	iamserver = peerNonce > myNonce
 
