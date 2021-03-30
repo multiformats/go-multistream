@@ -150,7 +150,7 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 }
 
 func TestNegLazyStressRead(t *testing.T) {
-	const count = 100
+	const count = 75
 
 	mux := NewMultistreamMuxer()
 	mux.AddHandler("/a", nil)
@@ -159,7 +159,9 @@ func TestNegLazyStressRead(t *testing.T) {
 
 	message := []byte("this is the message")
 	listener := make(chan io.ReadWriteCloser)
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for rwc := range listener {
 			m, selected, _, err := mux.NegotiateLazy(rwc)
 			if err != nil {
@@ -185,7 +187,6 @@ func TestNegLazyStressRead(t *testing.T) {
 			rwc.Close()
 		}
 	}()
-	defer func() { close(listener) }()
 
 	for i := 0; i < count; i++ {
 		a, b := newPipe(t)
@@ -198,8 +199,10 @@ func TestNegLazyStressRead(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		b.Close()
+		defer b.Close()
 	}
+	close(listener)
+	<-done
 }
 
 func TestNegLazyStressWrite(t *testing.T) {
