@@ -284,18 +284,6 @@ func simOpenSelectClient(protos []string, rwc io.ReadWriteCloser) (string, error
 	return selectProtosOrFail(protos, rwc)
 }
 
-func handshake(rw io.ReadWriter) error {
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- delimWriteBuffered(rw, []byte(ProtocolID))
-	}()
-
-	if err := readMultistreamHeader(rw); err != nil {
-		return err
-	}
-	return <-errCh
-}
-
 func readMultistreamHeader(r io.Reader) error {
 	tok, err := ReadNextToken(r)
 	if err != nil {

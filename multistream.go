@@ -5,7 +5,6 @@ package multistream
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -108,39 +107,6 @@ func delimWrite(w io.Writer, mes []byte) error {
 		return err
 	}
 	return nil
-}
-
-// Ls is a Multistream muxer command which returns the list of handler names
-// available on a muxer.
-func Ls(rw io.ReadWriter) ([]string, error) {
-	err := handshake(rw)
-	if err != nil {
-		return nil, err
-	}
-	err = delimWriteBuffered(rw, []byte("ls"))
-	if err != nil {
-		return nil, err
-	}
-
-	response, err := lpReadBuf(rw)
-	if err != nil {
-		return nil, err
-	}
-
-	r := bytes.NewReader(response)
-
-	var out []string
-	for {
-		val, err := lpReadBuf(r)
-		switch err {
-		default:
-			return nil, err
-		case io.EOF:
-			return out, nil
-		case nil:
-			out = append(out, string(val))
-		}
-	}
 }
 
 func fulltextMatch(s string) func(string) bool {
@@ -270,42 +236,27 @@ loop:
 			return nil, "", nil, err
 		}
 
-		switch tok {
-		case "ls":
-			protos, err := msm.encodeLocalProtocols()
-			if err != nil {
-				rwc.Close()
-				return nil, "", nil, err
-			}
+		h := msm.findHandler(tok)
+		if h == nil {
 			select {
-			case pval <- string(protos):
+			case pval <- "na":
 			case err := <-writeErr:
 				rwc.Close()
 				return nil, "", nil, err
 			}
-		default:
-			h := msm.findHandler(tok)
-			if h == nil {
-				select {
-				case pval <- "na":
-				case err := <-writeErr:
-					rwc.Close()
-					return nil, "", nil, err
-				}
-				continue loop
-			}
-
-			select {
-			case pval <- tok:
-			case <-writeErr:
-				// explicitly ignore this error. It will be returned to any
-				// writers and if we don't plan on writing anything, we still
-				// want to complete the handshake
-			}
-
-			// hand off processing to the sub-protocol handler
-			return lzc, tok, h.Handle, nil
+			continue loop
 		}
+
+		select {
+		case pval <- tok:
+		case <-writeErr:
+			// explicitly ignore this error. It will be returned to any
+			// writers and if we don't plan on writing anything, we still
+			// want to complete the handshake
+		}
+
+		// hand off processing to the sub-protocol handler
+		return lzc, tok, h.Handle, nil
 	}
 }
 
@@ -336,58 +287,22 @@ loop:
 			return "", nil, err
 		}
 
-		switch tok {
-		case "ls":
-			err := msm.Ls(rwc)
-			if err != nil {
+		h := msm.findHandler(tok)
+		if h == nil {
+			if err := delimWriteBuffered(rwc, []byte("na")); err != nil {
 				return "", nil, err
 			}
-		default:
-			h := msm.findHandler(tok)
-			if h == nil {
-				err := delimWriteBuffered(rwc, []byte("na"))
-				if err != nil {
-					return "", nil, err
-				}
-				continue loop
-			}
-
-			err := delimWriteBuffered(rwc, []byte(tok))
-			if err != nil {
-				return "", nil, err
-			}
-
-			// hand off processing to the sub-protocol handler
-			return tok, h.Handle, nil
+			continue loop
 		}
-	}
 
-}
-
-// Ls implements the "ls" command which writes the list of
-// supported protocols to the given Writer.
-func (msm *MultistreamMuxer) Ls(w io.Writer) error {
-	protos, err := msm.encodeLocalProtocols()
-	if err != nil {
-		return err
-	}
-	return delimWrite(w, protos)
-}
-
-// encodeLocalProtocols encodes the protocols this multistream-select router
-// handles, packed in a list of varint-delimited strings.
-func (msm *MultistreamMuxer) encodeLocalProtocols() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	msm.handlerlock.RLock()
-	for _, h := range msm.handlers {
-		err := delimWrite(buf, []byte(h.AddName))
-		if err != nil {
-			msm.handlerlock.RUnlock()
-			return nil, err
+		if err := delimWriteBuffered(rwc, []byte(tok)); err != nil {
+			return "", nil, err
 		}
+
+		// hand off processing to the sub-protocol handler
+		return tok, h.Handle, nil
 	}
-	msm.handlerlock.RUnlock()
-	return buf.Bytes(), nil
+
 }
 
 // Handle performs protocol negotiation on a ReadWriteCloser

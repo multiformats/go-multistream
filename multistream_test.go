@@ -635,69 +635,6 @@ func TestLargeMessageNegotiate(t *testing.T) {
 	}
 }
 
-func TestLs(t *testing.T) {
-	t.Run("none-eager", subtestLs(nil, false))
-	t.Run("one-eager", subtestLs([]string{"a"}, false))
-	t.Run("many-eager", subtestLs([]string{"a", "b", "c", "d", "e"}, false))
-	t.Run("empty-eager", subtestLs([]string{"", "a"}, false))
-
-	// lazy variants
-	t.Run("none-lazy", subtestLs(nil, true))
-	t.Run("one-lazy", subtestLs([]string{"a"}, true))
-	t.Run("many-lazy", subtestLs([]string{"a", "b", "c", "d", "e"}, true))
-	t.Run("empty-lazy", subtestLs([]string{"", "a"}, true))
-}
-
-func subtestLs(protos []string, lazy bool) func(*testing.T) {
-	return func(t *testing.T) {
-		mr := NewMultistreamMuxer()
-		mset := make(map[string]bool)
-		for _, p := range protos {
-			mr.AddHandler(p, nil)
-			mset[p] = true
-		}
-
-		c1, c2 := net.Pipe()
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-
-			var proto string
-			var err error
-			if lazy {
-				_, proto, _, err = mr.NegotiateLazy(c2)
-			} else {
-				proto, _, err = mr.Negotiate(c2)
-			}
-
-			c2.Close()
-			if err != io.EOF {
-				t.Error(err)
-			}
-			if proto != "" {
-				t.Errorf("expected no proto, got %s", proto)
-			}
-		}()
-		defer func() { <-done }()
-
-		items, err := Ls(c1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c1.Close()
-
-		if len(items) != len(protos) {
-			t.Fatal("got wrong number of protocols")
-		}
-
-		for _, tok := range items {
-			if !mset[tok] {
-				t.Fatalf("wasnt expecting protocol %s", tok)
-			}
-		}
-	}
-}
-
 type readonlyBuffer struct {
 	buf io.Reader
 }
