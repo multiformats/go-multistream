@@ -352,7 +352,7 @@ func lpReadBuf(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	if length > 64*1024 {
+	if length > 1024 {
 		return nil, ErrTooLarge
 	}
 
