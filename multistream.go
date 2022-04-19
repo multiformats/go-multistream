@@ -7,6 +7,8 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"os"
+	"runtime/debug"
 
 	"io"
 	"sync"
@@ -186,7 +188,14 @@ func (msm *MultistreamMuxer) findHandler(proto string) *Handler {
 // a multistream, the protocol used, the handler and an error. It is lazy
 // because the write-handshake is performed on a subroutine, allowing this
 // to return before that handshake is completed.
-func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (io.ReadWriteCloser, string, HandlerFunc, error) {
+func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (rwc_ io.ReadWriteCloser, proto string, handler HandlerFunc, err error) {
+	defer func() {
+		if rerr := recover(); rerr != nil {
+			fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
+			err = fmt.Errorf("panic in lazy multistream negotiation: %s", rerr)
+		}
+	}()
+
 	pval := make(chan string, 1)
 	writeErr := make(chan error, 1)
 	defer close(pval)
@@ -197,6 +206,15 @@ func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (io.ReadWrite
 
 	started := make(chan struct{})
 	go lzc.waitForHandshake.Do(func() {
+		defer func() {
+			if rerr := recover(); rerr != nil {
+				fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
+				err := fmt.Errorf("panic in lazy multistream negotiation, waiting for handshake: %s", rerr)
+				lzc.werr = err
+				writeErr <- err
+			}
+		}()
+
 		close(started)
 
 		defer close(writeErr)
@@ -262,10 +280,16 @@ loop:
 
 // Negotiate performs protocol selection and returns the protocol name and
 // the matching handler function for it (or an error).
-func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (string, HandlerFunc, error) {
+func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (proto string, handler HandlerFunc, err error) {
+	defer func() {
+		if rerr := recover(); rerr != nil {
+			fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
+			err = fmt.Errorf("panic in multistream negotiation: %s", rerr)
+		}
+	}()
+
 	// Send our protocol ID
-	err := delimWriteBuffered(rwc, []byte(ProtocolID))
-	if err != nil {
+	if err := delimWriteBuffered(rwc, []byte(ProtocolID)); err != nil {
 		return "", nil, err
 	}
 
