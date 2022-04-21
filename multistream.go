@@ -188,94 +188,10 @@ func (msm *MultistreamMuxer) findHandler(proto string) *Handler {
 // a multistream, the protocol used, the handler and an error. It is lazy
 // because the write-handshake is performed on a subroutine, allowing this
 // to return before that handshake is completed.
+// Deprecated: use Negotiate instead.
 func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (rwc_ io.ReadWriteCloser, proto string, handler HandlerFunc, err error) {
-	defer func() {
-		if rerr := recover(); rerr != nil {
-			fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
-			err = fmt.Errorf("panic in lazy multistream negotiation: %s", rerr)
-		}
-	}()
-
-	pval := make(chan string, 1)
-	writeErr := make(chan error, 1)
-	defer close(pval)
-
-	lzc := &lazyServerConn{
-		con: rwc,
-	}
-
-	started := make(chan struct{})
-	go lzc.waitForHandshake.Do(func() {
-		defer func() {
-			if rerr := recover(); rerr != nil {
-				fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
-				err := fmt.Errorf("panic in lazy multistream negotiation, waiting for handshake: %s", rerr)
-				lzc.werr = err
-				writeErr <- err
-			}
-		}()
-
-		close(started)
-
-		defer close(writeErr)
-
-		if err := delimWriteBuffered(rwc, []byte(ProtocolID)); err != nil {
-			lzc.werr = err
-			writeErr <- err
-			return
-		}
-
-		for proto := range pval {
-			if err := delimWriteBuffered(rwc, []byte(proto)); err != nil {
-				lzc.werr = err
-				writeErr <- err
-				return
-			}
-		}
-	})
-	<-started
-
-	line, err := ReadNextToken(rwc)
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	if line != ProtocolID {
-		rwc.Close()
-		return nil, "", nil, ErrIncorrectVersion
-	}
-
-loop:
-	for {
-		// Now read and respond to commands until they send a valid protocol id
-		tok, err := ReadNextToken(rwc)
-		if err != nil {
-			rwc.Close()
-			return nil, "", nil, err
-		}
-
-		h := msm.findHandler(tok)
-		if h == nil {
-			select {
-			case pval <- "na":
-			case err := <-writeErr:
-				rwc.Close()
-				return nil, "", nil, err
-			}
-			continue loop
-		}
-
-		select {
-		case pval <- tok:
-		case <-writeErr:
-			// explicitly ignore this error. It will be returned to any
-			// writers and if we don't plan on writing anything, we still
-			// want to complete the handshake
-		}
-
-		// hand off processing to the sub-protocol handler
-		return lzc, tok, h.Handle, nil
-	}
+	proto, handler, err = msm.Negotiate(rwc)
+	return rwc, proto, handler, err
 }
 
 // Negotiate performs protocol selection and returns the protocol name and
