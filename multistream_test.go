@@ -248,12 +248,6 @@ func TestNegLazyStressWrite(t *testing.T) {
 				return
 			}
 
-			_, err = m.Read(nil)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-
 			_, err = m.Write(message)
 			if err != nil {
 				t.Error(err)
@@ -690,17 +684,7 @@ func TestNegotiateFail(t *testing.T) {
 	rob := &readonlyBuffer{bytes.NewReader(buf.Bytes())}
 	_, _, err = mux.Negotiate(rob)
 	if err == nil {
-		t.Fatal("normal negotiate should fail here")
-	}
-
-	rob = &readonlyBuffer{bytes.NewReader(buf.Bytes())}
-	_, out, _, err := mux.NegotiateLazy(rob)
-	if err != nil {
-		t.Fatal("expected lazy negoatiate to succeed")
-	}
-
-	if out != "foo" {
-		t.Fatal("got wrong protocol")
+		t.Fatal("Negotiate should fail here")
 	}
 }
 
