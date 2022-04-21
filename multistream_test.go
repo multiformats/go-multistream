@@ -149,6 +149,26 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 	verifyPipe(t, ac, b)
 }
 
+func TestProtocolNegotiationUnsupported(t *testing.T) {
+	a, b := newPipe(t)
+	mux := NewMultistreamMuxer()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mux.Negotiate(a)
+	}()
+
+	c := NewMSSelect(b, "/foo")
+	c.Write([]byte("foo protocol data"))
+	_, err := c.Read([]byte{0})
+	if err != ErrNotSupported {
+		t.Fatalf("expected protocol /foo to be unsupported, got: %v", err)
+	}
+	c.Close()
+	<-done
+}
+
 func TestNegLazyStressRead(t *testing.T) {
 	const count = 75
 
