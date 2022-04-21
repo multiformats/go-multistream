@@ -7,10 +7,9 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
-
-	"io"
 	"sync"
 
 	"github.com/multiformats/go-varint"
@@ -256,9 +255,8 @@ loop:
 
 		h := msm.findHandler(tok)
 		if h == nil {
-			select {
-			case pval <- "na":
-			case err := <-writeErr:
+			if err := delimWriteBuffered(rwc, []byte("na")); err != nil {
+				lzc.werr = err
 				rwc.Close()
 				return nil, "", nil, err
 			}

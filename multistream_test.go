@@ -9,6 +9,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/multiformats/go-varint"
 )
 
 type rwcStrict struct {
@@ -166,6 +168,31 @@ func TestProtocolNegotiationUnsupported(t *testing.T) {
 		t.Fatalf("expected protocol /foo to be unsupported, got: %v", err)
 	}
 	c.Close()
+	<-done
+}
+
+func TestProtocolNegotiationLazyWithApplicationPayload(t *testing.T) {
+	a, b := newPipe(t)
+	mux := NewMultistreamMuxer()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mux.Negotiate(a)
+	}()
+
+	// Compose the application payload for protocol /foo.
+	// Since it's prefixed with a varint, it _looks_ like a multistream token, but in reality it's not.
+	buf := varint.ToUvarint(3)
+	buf = append(buf, []byte("bar")...)
+	lzcon := NewMSSelect(b, "/foo")
+	if _, err := lzcon.Write(buf); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lzcon.Read([]byte{0}); err != ErrNotSupported {
+		t.Fatalf("expected protocol /foo to be unsupported, got: %v", err)
+	}
+	lzcon.Close()
 	<-done
 }
 
