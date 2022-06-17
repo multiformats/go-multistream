@@ -235,10 +235,10 @@ loop:
 			continue loop
 		}
 
-		_ = delimWriteBuffered(rwc, []byte(tok))
 		// Ignore the error here.  We want the handshake to finish, even if the
-		// other size has closed this rwc for writing. They may have sent us a
-		// message and closed. Future writers will get an error here anyways.
+		// other side has closed this rwc for writing. They may have sent us a
+		// message and closed. Future writers will get an error anyways.
+		_ = delimWriteBuffered(rwc, []byte(tok))
 
 		// hand off processing to the sub-protocol handler
 		return tok, h.Handle, nil
