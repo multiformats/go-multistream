@@ -688,6 +688,81 @@ func TestNegotiateFail(t *testing.T) {
 	}
 }
 
+type mockStream struct {
+	expectWrite [][]byte
+	toRead      [][]byte
+}
+
+func (s *mockStream) Close() error {
+	return nil
+}
+
+func (s *mockStream) Write(p []byte) (n int, err error) {
+	if len(s.expectWrite) == 0 {
+		return 0, fmt.Errorf("no more writes expected")
+	}
+
+	if !bytes.Equal(s.expectWrite[0], p) {
+		return 0, fmt.Errorf("unexpected write")
+	}
+
+	s.expectWrite = s.expectWrite[1:]
+	return len(p), nil
+}
+
+func (s *mockStream) Read(p []byte) (n int, err error) {
+	if len(s.toRead) == 0 {
+		return 0, fmt.Errorf("no more reads expected")
+	}
+
+	if len(p) < len(s.toRead[0]) {
+		copy(p, s.toRead[0])
+		s.toRead[0] = s.toRead[0][len(p):]
+		n = len(p)
+	} else {
+		copy(p, s.toRead[0])
+		n = len(s.toRead[0])
+		s.toRead = s.toRead[1:]
+	}
+
+	return n, nil
+}
+
+func TestNegotiatePeerSendsAndCloses(t *testing.T) {
+	// Tests the case where a peer will negotiate a protocol, send data, then close the stream immediately
+	var buf bytes.Buffer
+	err := delimWrite(&buf, []byte(ProtocolID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	delimtedProtocolID := make([]byte, buf.Len())
+	copy(delimtedProtocolID, buf.Bytes())
+
+	err = delimWrite(&buf, []byte("foo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = delimWrite(&buf, []byte("somedata"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := &mockStream{
+		// We mock the closed stream by only expecting a single write. The
+		// mockstream will error on any more writes (same as writing to a closed
+		// stream)
+		expectWrite: [][]byte{delimtedProtocolID},
+		toRead:      [][]byte{buf.Bytes()},
+	}
+
+	mux := NewMultistreamMuxer()
+	mux.AddHandler("foo", nil)
+	_, _, err = mux.Negotiate(s)
+	if err != nil {
+		t.Fatal("Negotiate should not fail here", err)
+	}
+}
+
 func TestSimopenClientServer(t *testing.T) {
 	a, b := newPipe(t)
 
