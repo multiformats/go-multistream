@@ -665,7 +665,7 @@ func (rob *readonlyBuffer) Close() error {
 	return nil
 }
 
-func TestNegotiateFail(t *testing.T) {
+func TestNegotiatThenWriteFail(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	err := delimWrite(buf, []byte(ProtocolID))
@@ -683,9 +683,15 @@ func TestNegotiateFail(t *testing.T) {
 
 	rob := &readonlyBuffer{bytes.NewReader(buf.Bytes())}
 	_, _, err = mux.Negotiate(rob)
-	if err == nil {
-		t.Fatal("Negotiate should fail here")
+	if err != nil {
+		t.Fatal("Negotiate should not fail here")
 	}
+
+	_, err = rob.Write([]byte("app data"))
+	if err == nil {
+		t.Fatal("Write should fail here")
+	}
+
 }
 
 type mockStream struct {
