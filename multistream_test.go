@@ -665,7 +665,7 @@ func (rob *readonlyBuffer) Close() error {
 	return nil
 }
 
-func TestNegotiateFail(t *testing.T) {
+func TestNegotiatThenWriteFail(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	err := delimWrite(buf, []byte(ProtocolID))
@@ -683,9 +683,15 @@ func TestNegotiateFail(t *testing.T) {
 
 	rob := &readonlyBuffer{bytes.NewReader(buf.Bytes())}
 	_, _, err = mux.Negotiate(rob)
-	if err == nil {
-		t.Fatal("Negotiate should fail here")
+	if err != nil {
+		t.Fatal("Negotiate should not fail here")
 	}
+
+	_, err = rob.Write([]byte("app data"))
+	if err == nil {
+		t.Fatal("Write should fail here")
+	}
+
 }
 
 type mockStream struct {
@@ -747,19 +753,40 @@ func TestNegotiatePeerSendsAndCloses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := &mockStream{
-		// We mock the closed stream by only expecting a single write. The
-		// mockstream will error on any more writes (same as writing to a closed
-		// stream)
-		expectWrite: [][]byte{delimtedProtocolID},
-		toRead:      [][]byte{buf.Bytes()},
+	type testCase = struct {
+		name string
+		s    *mockStream
 	}
 
-	mux := NewMultistreamMuxer()
-	mux.AddHandler("foo", nil)
-	_, _, err = mux.Negotiate(s)
-	if err != nil {
-		t.Fatal("Negotiate should not fail here", err)
+	testCases := []testCase{
+		{
+			name: "Able to echo multistream protocol id, but not app protocol id",
+			s: &mockStream{
+				// We mock the closed stream by only expecting a single write. The
+				// mockstream will error on any more writes (same as writing to a closed
+				// stream)
+				expectWrite: [][]byte{delimtedProtocolID},
+				toRead:      [][]byte{buf.Bytes()},
+			},
+		},
+		{
+			name: "Not able to write anything. Stream closes too fast",
+			s: &mockStream{
+				expectWrite: [][]byte{},
+				toRead:      [][]byte{buf.Bytes()},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := NewMultistreamMuxer()
+			mux.AddHandler("foo", nil)
+			_, _, err = mux.Negotiate(tc.s)
+			if err != nil {
+				t.Fatal("Negotiate should not fail here", err)
+			}
+		})
 	}
 }
 
