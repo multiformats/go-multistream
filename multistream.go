@@ -184,16 +184,6 @@ func (msm *MultistreamMuxer) findHandler(proto string) *Handler {
 	return nil
 }
 
-// NegotiateLazy performs protocol selection and returns
-// a multistream, the protocol used, the handler and an error. It is lazy
-// because the write-handshake is performed on a subroutine, allowing this
-// to return before that handshake is completed.
-// Deprecated: use Negotiate instead.
-func (msm *MultistreamMuxer) NegotiateLazy(rwc io.ReadWriteCloser) (rwc_ io.ReadWriteCloser, proto string, handler HandlerFunc, err error) {
-	proto, handler, err = msm.Negotiate(rwc)
-	return rwc, proto, handler, err
-}
-
 // Negotiate performs protocol selection and returns the protocol name and
 // the matching handler function for it (or an error).
 func (msm *MultistreamMuxer) Negotiate(rwc io.ReadWriteCloser) (proto string, handler HandlerFunc, err error) {

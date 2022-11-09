@@ -117,17 +117,15 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
 
-	var ac io.ReadWriteCloser
 	done := make(chan struct{})
 	go func() {
-		m, selected, _, err := mux.NegotiateLazy(a)
+		selected, _, err := mux.Negotiate(a)
 		if err != nil {
 			t.Error(err)
 		}
 		if selected != "/a" {
 			t.Error("incorrect protocol selected")
 		}
-		ac = m
 		close(done)
 	}()
 
@@ -146,7 +144,7 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 	case <-done:
 	}
 
-	verifyPipe(t, ac, b)
+	verifyPipe(t, a, b)
 }
 
 func TestProtocolNegotiationUnsupported(t *testing.T) {
@@ -183,7 +181,7 @@ func TestNegLazyStressRead(t *testing.T) {
 	go func() {
 		defer close(done)
 		for rwc := range listener {
-			m, selected, _, err := mux.NegotiateLazy(rwc)
+			selected, _, err := mux.Negotiate(rwc)
 			if err != nil {
 				t.Error(err)
 				return
@@ -195,8 +193,7 @@ func TestNegLazyStressRead(t *testing.T) {
 			}
 
 			buf := make([]byte, len(message))
-			_, err = io.ReadFull(m, buf)
-			if err != nil {
+			if _, err := io.ReadFull(rwc, buf); err != nil {
 				t.Error(err)
 				return
 			}
@@ -237,7 +234,7 @@ func TestNegLazyStressWrite(t *testing.T) {
 	listener := make(chan io.ReadWriteCloser)
 	go func() {
 		for rwc := range listener {
-			m, selected, _, err := mux.NegotiateLazy(rwc)
+			selected, _, err := mux.Negotiate(rwc)
 			if err != nil {
 				t.Error(err)
 				return
@@ -248,8 +245,7 @@ func TestNegLazyStressWrite(t *testing.T) {
 				return
 			}
 
-			_, err = m.Write(message)
-			if err != nil {
+			if _, err := rwc.Write(message); err != nil {
 				t.Error(err)
 				return
 			}
