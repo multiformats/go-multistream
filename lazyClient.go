@@ -8,9 +8,9 @@ import (
 
 // NewMSSelect returns a new Multistream which is able to perform
 // protocol selection with a MultistreamMuxer.
-func NewMSSelect(c io.ReadWriteCloser, proto string) LazyConn {
+func NewMSSelect[T StringLike](c io.ReadWriteCloser, proto T) LazyConn {
 	return &lazyClientConn{
-		protos: []string{ProtocolID, proto},
+		protos: []string{ProtocolID, string(proto)},
 		con:    c,
 	}
 }
@@ -71,7 +71,7 @@ func (l *lazyClientConn) Read(b []byte) (int, error) {
 func (l *lazyClientConn) doReadHandshake() {
 	for _, proto := range l.protos {
 		// read protocol
-		tok, err := ReadNextToken(l.con)
+		tok, err := ReadNextToken[string](l.con)
 		if err != nil {
 			l.rerr = err
 			return

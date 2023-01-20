@@ -78,7 +78,7 @@ func newPipe(t *testing.T) (io.ReadWriteCloser, io.ReadWriteCloser) {
 func TestProtocolNegotiation(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -112,7 +112,7 @@ func TestProtocolNegotiation(t *testing.T) {
 func TestProtocolNegotiationLazy(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -149,7 +149,7 @@ func TestProtocolNegotiationLazy(t *testing.T) {
 
 func TestProtocolNegotiationUnsupported(t *testing.T) {
 	a, b := newPipe(t)
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 
 	done := make(chan struct{})
 	go func() {
@@ -170,7 +170,7 @@ func TestProtocolNegotiationUnsupported(t *testing.T) {
 func TestNegLazyStressRead(t *testing.T) {
 	const count = 75
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -225,7 +225,7 @@ func TestNegLazyStressRead(t *testing.T) {
 func TestNegLazyStressWrite(t *testing.T) {
 	const count = 100
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -277,7 +277,7 @@ func TestNegLazyStressWrite(t *testing.T) {
 func TestInvalidProtocol(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -303,7 +303,7 @@ func TestInvalidProtocol(t *testing.T) {
 func TestSelectOne(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -341,7 +341,7 @@ func TestSelectOne(t *testing.T) {
 func TestSelectFails(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -355,7 +355,7 @@ func TestSelectFails(t *testing.T) {
 }
 
 func TestRemoveProtocol(t *testing.T) {
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -378,7 +378,7 @@ func TestRemoveProtocol(t *testing.T) {
 func TestSelectOneAndWrite(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -416,7 +416,7 @@ func TestSelectOneAndWrite(t *testing.T) {
 func TestLazyConns(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -430,7 +430,7 @@ func TestLazyConns(t *testing.T) {
 func TestLazyAndMux(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -474,7 +474,7 @@ func TestLazyAndMux(t *testing.T) {
 func TestHandleFunc(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", func(p string, rwc io.ReadWriteCloser) error {
@@ -505,7 +505,7 @@ func TestHandleFunc(t *testing.T) {
 func TestAddHandlerOverride(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/foo", func(p string, rwc io.ReadWriteCloser) error {
 		t.Error("shouldnt execute this handler")
 		return nil
@@ -536,7 +536,7 @@ func TestAddHandlerOverride(t *testing.T) {
 func TestLazyAndMuxWrite(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 	mux.AddHandler("/b", nil)
 	mux.AddHandler("/c", nil)
@@ -624,7 +624,7 @@ func TestTooLargeMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = ReadNextToken(buf)
+	_, err = ReadNextToken[string](buf)
 	if err == nil {
 		t.Fatal("should have failed to read message larger than 64k")
 	}
@@ -674,7 +674,7 @@ func TestNegotiatThenWriteFail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("foo", nil)
 
 	rob := &readonlyBuffer{bytes.NewReader(buf.Bytes())}
@@ -776,7 +776,7 @@ func TestNegotiatePeerSendsAndCloses(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mux := NewMultistreamMuxer()
+			mux := NewMultistreamMuxer[string]()
 			mux.AddHandler("foo", nil)
 			_, _, err = mux.Negotiate(tc.s)
 			if err != nil {
@@ -789,7 +789,7 @@ func TestNegotiatePeerSendsAndCloses(t *testing.T) {
 func TestSimopenClientServer(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 
 	done := make(chan struct{})
@@ -829,7 +829,7 @@ func TestSimopenClientServer(t *testing.T) {
 func TestSimopenClientServerFail(t *testing.T) {
 	a, b := newPipe(t)
 
-	mux := NewMultistreamMuxer()
+	mux := NewMultistreamMuxer[string]()
 	mux.AddHandler("/a", nil)
 
 	done := make(chan struct{})
