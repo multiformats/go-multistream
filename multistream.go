@@ -205,7 +205,7 @@ func (msm *MultistreamMuxer[T]) Negotiate(rwc io.ReadWriteCloser) (proto T, hand
 	// other side has closed this rwc for writing. They may have sent us a
 	// message and closed. Future writers will get an error anyways.
 	_ = delimWriteBuffered(rwc, []byte(ProtocolID))
-	line, err := ReadNextToken[string](rwc)
+	line, err := ReadNextToken[T](rwc)
 	if err != nil {
 		return "", nil, err
 	}
