@@ -13,9 +13,17 @@ import (
 	"strings"
 )
 
-// ErrNotSupported is the error returned when the muxer does not support
-// the protocol specified for the handshake.
-var ErrNotSupported = errors.New("protocol not supported")
+// ErrNotSupport is the error returned when the muxer doesn't support
+// the protocols tried for the handshake.
+type ErrNotSupport[T StringLike] struct {
+
+	// Slice of protocols that were not supported by the muxer
+	Protos []T
+}
+
+func (e ErrNotSupport[T]) Error() string {
+	return fmt.Sprintf("protocols not supported: %v", e.Protos)
+}
 
 // ErrNoProtocols is the error returned when the no protocols have been
 // specified.
@@ -83,14 +91,18 @@ func SelectOneOf[T StringLike](protos []T, rwc io.ReadWriteCloser) (proto T, err
 	// can continue negotiating the rest of the protocols normally.
 	//
 	// This saves us a round trip.
-	switch err := SelectProtoOrFail(protos[0], rwc); err {
+	switch err := SelectProtoOrFail(protos[0], rwc); err.(type) {
 	case nil:
 		return protos[0], nil
-	case ErrNotSupported: // try others
+	case ErrNotSupport[T]: // try others
 	default:
 		return "", err
 	}
-	return selectProtosOrFail(protos[1:], rwc)
+	proto, err = selectProtosOrFail(protos[1:], rwc)
+	if _, ok := err.(ErrNotSupport[T]); ok {
+		return "", ErrNotSupport[T]{protos}
+	}
+	return proto, err
 }
 
 const simOpenProtocol = "/libp2p/simultaneous-connect"
@@ -161,7 +173,11 @@ func clientOpen[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, error) {
 	case protos[0]:
 		return tok, nil
 	case "na":
-		return selectProtosOrFail(protos[1:], rwc)
+		proto, err := selectProtosOrFail(protos[1:], rwc)
+		if _, ok := err.(ErrNotSupport[T]); ok {
+			return "", ErrNotSupport[T]{protos}
+		}
+		return proto, err
 	default:
 		return "", fmt.Errorf("unexpected response: %s", tok)
 	}
@@ -170,15 +186,15 @@ func clientOpen[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, error) {
 func selectProtosOrFail[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, error) {
 	for _, p := range protos {
 		err := trySelect(p, rwc)
-		switch err {
+		switch err := err.(type) {
 		case nil:
 			return p, nil
-		case ErrNotSupported:
+		case ErrNotSupport[T]:
 		default:
 			return "", err
 		}
 	}
-	return "", ErrNotSupported
+	return "", ErrNotSupport[T]{protos}
 }
 
 func simOpen[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, bool, error) {
@@ -255,12 +271,11 @@ func simOpenSelectServer[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, e
 	if err = <-werrCh; err != nil {
 		return "", err
 	}
-
 	for {
 		tok, err = ReadNextToken[T](rwc)
 
 		if err == io.EOF {
-			return "", ErrNotSupported
+			return "", ErrNotSupport[T]{protos}
 		}
 
 		if err != nil {
@@ -337,7 +352,7 @@ func readProto[T StringLike](proto T, r io.Reader) error {
 	case proto:
 		return nil
 	case "na":
-		return ErrNotSupported
+		return ErrNotSupport[T]{[]T{proto}}
 	default:
 		return fmt.Errorf("unrecognized response: %s", tok)
 	}

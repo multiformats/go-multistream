@@ -21,6 +21,19 @@ func newRwcStrict(t *testing.T, rwc io.ReadWriteCloser) io.ReadWriteCloser {
 	return &rwcStrict{t: t, rwc: rwc}
 }
 
+func cmpErrNotSupport(e1 error, e2 ErrNotSupport[string]) bool {
+	e, ok := e1.(ErrNotSupport[string])
+	if !ok || len(e.Protos) != len(e2.Protos) {
+		return false
+	}
+	for i := 0; i < len(e.Protos); i++ {
+		if e.Protos[i] != e2.Protos[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *rwcStrict) Read(b []byte) (int, error) {
 	if s.reading {
 		s.t.Error("concurrent read")
@@ -160,7 +173,7 @@ func TestProtocolNegotiationUnsupported(t *testing.T) {
 	c := NewMSSelect(b, "/foo")
 	c.Write([]byte("foo protocol data"))
 	_, err := c.Read([]byte{0})
-	if err != ErrNotSupported {
+	if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/foo"}}) {
 		t.Fatalf("expected protocol /foo to be unsupported, got: %v", err)
 	}
 	c.Close()
@@ -349,7 +362,7 @@ func TestSelectFails(t *testing.T) {
 	go mux.Negotiate(a)
 
 	_, err := SelectOneOf([]string{"/d", "/e"}, b)
-	if err != ErrNotSupported {
+	if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/d", "/e"}}) {
 		t.Fatal("expected to not be supported")
 	}
 }
@@ -842,7 +855,7 @@ func TestSimopenClientServerFail(t *testing.T) {
 	}()
 
 	_, _, err := SelectWithSimopenOrFail([]string{"/b"}, b)
-	if err != ErrNotSupported {
+	if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/b"}}) {
 		t.Fatal(err)
 	}
 	b.Close()
@@ -936,7 +949,7 @@ func TestSimopenClientClientFail(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		_, _, err := SelectWithSimopenOrFail([]string{"/a"}, b)
-		if err != ErrNotSupported {
+		if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/a"}}) {
 			t.Error(err)
 		}
 		b.Close()
@@ -944,7 +957,7 @@ func TestSimopenClientClientFail(t *testing.T) {
 	}()
 
 	_, _, err := SelectWithSimopenOrFail([]string{"/b"}, a)
-	if err != ErrNotSupported {
+	if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/b"}}) {
 		t.Fatal(err)
 	}
 	a.Close()
