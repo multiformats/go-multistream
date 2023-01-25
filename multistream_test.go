@@ -21,8 +21,8 @@ func newRwcStrict(t *testing.T, rwc io.ReadWriteCloser) io.ReadWriteCloser {
 	return &rwcStrict{t: t, rwc: rwc}
 }
 
-func cmpErrNotSupport(e1 error, e2 ErrNotSupport[string]) bool {
-	e, ok := e1.(ErrNotSupport[string])
+func cmpErrNotSupport(e1 error, e2 ErrNotSupported[string]) bool {
+	e, ok := e1.(ErrNotSupported[string])
 	if !ok || len(e.Protos) != len(e2.Protos) {
 		return false
 	}
@@ -173,7 +173,7 @@ func TestProtocolNegotiationUnsupported(t *testing.T) {
 	c := NewMSSelect(b, "/foo")
 	c.Write([]byte("foo protocol data"))
 	_, err := c.Read([]byte{0})
-	if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/foo"}}) {
+	if !cmpErrNotSupport(err, ErrNotSupported[string]{[]string{"/foo"}}) {
 		t.Fatalf("expected protocol /foo to be unsupported, got: %v", err)
 	}
 	c.Close()
@@ -362,7 +362,7 @@ func TestSelectFails(t *testing.T) {
 	go mux.Negotiate(a)
 
 	_, err := SelectOneOf([]string{"/d", "/e"}, b)
-	if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/d", "/e"}}) {
+	if !cmpErrNotSupport(err, ErrNotSupported[string]{[]string{"/d", "/e"}}) {
 		t.Fatal("expected to not be supported")
 	}
 }
@@ -855,7 +855,7 @@ func TestSimopenClientServerFail(t *testing.T) {
 	}()
 
 	_, _, err := SelectWithSimopenOrFail([]string{"/b"}, b)
-	if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/b"}}) {
+	if !cmpErrNotSupport(err, ErrNotSupported[string]{[]string{"/b"}}) {
 		t.Fatal(err)
 	}
 	b.Close()
@@ -949,7 +949,7 @@ func TestSimopenClientClientFail(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		_, _, err := SelectWithSimopenOrFail([]string{"/a"}, b)
-		if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/a"}}) {
+		if !cmpErrNotSupport(err, ErrNotSupported[string]{[]string{"/a"}}) {
 			t.Error(err)
 		}
 		b.Close()
@@ -957,7 +957,7 @@ func TestSimopenClientClientFail(t *testing.T) {
 	}()
 
 	_, _, err := SelectWithSimopenOrFail([]string{"/b"}, a)
-	if !cmpErrNotSupport(err, ErrNotSupport[string]{[]string{"/b"}}) {
+	if !cmpErrNotSupport(err, ErrNotSupported[string]{[]string{"/b"}}) {
 		t.Fatal(err)
 	}
 	a.Close()

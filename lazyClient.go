@@ -78,7 +78,7 @@ func (l *lazyClientConn[T]) doReadHandshake() {
 		}
 
 		if tok == "na" {
-			l.rerr = ErrNotSupport[T]{[]T{proto}}
+			l.rerr = ErrNotSupported[T]{[]T{proto}}
 			return
 		}
 		if tok != proto {

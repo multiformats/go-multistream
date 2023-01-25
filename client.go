@@ -13,15 +13,15 @@ import (
 	"strings"
 )
 
-// ErrNotSupport is the error returned when the muxer doesn't support
+// ErrNotSupported is the error returned when the muxer doesn't support
 // the protocols tried for the handshake.
-type ErrNotSupport[T StringLike] struct {
+type ErrNotSupported[T StringLike] struct {
 
 	// Slice of protocols that were not supported by the muxer
 	Protos []T
 }
 
-func (e ErrNotSupport[T]) Error() string {
+func (e ErrNotSupported[T]) Error() string {
 	return fmt.Sprintf("protocols not supported: %v", e.Protos)
 }
 
@@ -94,13 +94,13 @@ func SelectOneOf[T StringLike](protos []T, rwc io.ReadWriteCloser) (proto T, err
 	switch err := SelectProtoOrFail(protos[0], rwc); err.(type) {
 	case nil:
 		return protos[0], nil
-	case ErrNotSupport[T]: // try others
+	case ErrNotSupported[T]: // try others
 	default:
 		return "", err
 	}
 	proto, err = selectProtosOrFail(protos[1:], rwc)
-	if _, ok := err.(ErrNotSupport[T]); ok {
-		return "", ErrNotSupport[T]{protos}
+	if _, ok := err.(ErrNotSupported[T]); ok {
+		return "", ErrNotSupported[T]{protos}
 	}
 	return proto, err
 }
@@ -174,8 +174,8 @@ func clientOpen[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, error) {
 		return tok, nil
 	case "na":
 		proto, err := selectProtosOrFail(protos[1:], rwc)
-		if _, ok := err.(ErrNotSupport[T]); ok {
-			return "", ErrNotSupport[T]{protos}
+		if _, ok := err.(ErrNotSupported[T]); ok {
+			return "", ErrNotSupported[T]{protos}
 		}
 		return proto, err
 	default:
@@ -189,12 +189,12 @@ func selectProtosOrFail[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, er
 		switch err := err.(type) {
 		case nil:
 			return p, nil
-		case ErrNotSupport[T]:
+		case ErrNotSupported[T]:
 		default:
 			return "", err
 		}
 	}
-	return "", ErrNotSupport[T]{protos}
+	return "", ErrNotSupported[T]{protos}
 }
 
 func simOpen[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, bool, error) {
@@ -275,7 +275,7 @@ func simOpenSelectServer[T StringLike](protos []T, rwc io.ReadWriteCloser) (T, e
 		tok, err = ReadNextToken[T](rwc)
 
 		if err == io.EOF {
-			return "", ErrNotSupport[T]{protos}
+			return "", ErrNotSupported[T]{protos}
 		}
 
 		if err != nil {
@@ -352,7 +352,7 @@ func readProto[T StringLike](proto T, r io.Reader) error {
 	case proto:
 		return nil
 	case "na":
-		return ErrNotSupport[T]{[]T{proto}}
+		return ErrNotSupported[T]{[]T{proto}}
 	default:
 		return fmt.Errorf("unrecognized response: %s", tok)
 	}
