@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -968,4 +969,31 @@ func TestSimopenClientClientFail(t *testing.T) {
 
 	case <-done:
 	}
+}
+
+type rwc struct {
+	*strings.Reader
+}
+
+func (*rwc) Write(b []byte) (int, error) {
+	return len(b), nil
+}
+
+func (*rwc) Close() error {
+	return nil
+}
+
+func FuzzMultistream(f *testing.F) {
+	f.Add("/libp2p/simultaneous-connect")
+	f.Add(ProtocolID)
+
+	f.Fuzz(func(t *testing.T, b string) {
+		readStream := strings.NewReader(b)
+		input := &rwc{readStream}
+
+		mux := NewMultistreamMuxer[string]()
+		mux.AddHandler("/a", nil)
+		mux.AddHandler("/b", nil)
+		_ = mux.Handle(input)
+	})
 }

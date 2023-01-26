@@ -7,10 +7,9 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
-
-	"io"
 	"sync"
 
 	"github.com/multiformats/go-varint"
