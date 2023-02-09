@@ -25,6 +25,11 @@ func (e ErrNotSupported[T]) Error() string {
 	return fmt.Sprintf("protocols not supported: %v", e.Protos)
 }
 
+func (e ErrNotSupported[T]) Is(target error) bool {
+	_, ok := target.(ErrNotSupported[T])
+	return ok
+}
+
 // ErrNoProtocols is the error returned when the no protocols have been
 // specified.
 var ErrNoProtocols = errors.New("no protocols specified")
