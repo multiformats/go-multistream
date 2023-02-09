@@ -1015,4 +1015,14 @@ func TestComparableErrors(t *testing.T) {
 	if errors.Is(err1, ErrNotSupported[Bar]{}) {
 		t.Fatalf("Should not be comparable")
 	}
+
+	err3 := ErrNotSupported[string]{}
+
+	if !errors.As(err2, &err3) {
+		t.Fatalf("Should be comparable")
+	}
+
+	if err3.Protos[0] != "/a" {
+		t.Fatalf("Should be read as ErrNotSupported")
+	}
 }
