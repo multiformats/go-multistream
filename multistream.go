@@ -88,10 +88,10 @@ func delimWriteBuffered(w io.Writer, mes []byte) error {
 	return bw.Flush()
 }
 
-func delitmWriteAll(w io.Writer, messages ...[]byte) error {
+func delimWriteAll(w io.Writer, messages ...[]byte) error {
 	for _, mes := range messages {
 		if err := delimWrite(w, mes); err != nil {
-			return fmt.Errorf("failed to write messages %s, err: %v	", string(mes), err)
+			return fmt.Errorf("failed to write messages %s, err: %w	", mes, err)
 		}
 	}
 
