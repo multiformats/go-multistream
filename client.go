@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"testing"
 )
 
 // ErrNotSupported is the error returned when the muxer doesn't support
@@ -35,12 +36,14 @@ var ErrNoProtocols = errors.New("no protocols specified")
 // on this ReadWriteCloser. It returns an error if, for example,
 // the muxer does not know how to handle this protocol.
 func SelectProtoOrFail[T StringLike](proto T, rwc io.ReadWriteCloser) (err error) {
-	defer func() {
-		if rerr := recover(); rerr != nil {
-			fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
-			err = fmt.Errorf("panic selecting protocol: %s", rerr)
-		}
-	}()
+	if !testing.Testing() {
+		defer func() {
+			if rerr := recover(); rerr != nil {
+				fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
+				err = fmt.Errorf("panic selecting protocol: %s", rerr)
+			}
+		}()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -70,12 +73,14 @@ func SelectProtoOrFail[T StringLike](proto T, rwc io.ReadWriteCloser) (err error
 // SelectOneOf will perform handshakes with the protocols on the given slice
 // until it finds one which is supported by the muxer.
 func SelectOneOf[T StringLike](protos []T, rwc io.ReadWriteCloser) (proto T, err error) {
-	defer func() {
-		if rerr := recover(); rerr != nil {
-			fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
-			err = fmt.Errorf("panic selecting one of protocols: %s", rerr)
-		}
-	}()
+	if !testing.Testing() {
+		defer func() {
+			if rerr := recover(); rerr != nil {
+				fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
+				err = fmt.Errorf("panic selecting one of protocols: %s", rerr)
+			}
+		}()
+	}
 
 	if len(protos) == 0 {
 		return "", ErrNoProtocols

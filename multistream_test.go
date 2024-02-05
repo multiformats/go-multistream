@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -802,7 +803,7 @@ func TestNegotiatePeerSendsAndCloses(t *testing.T) {
 }
 
 type rwc struct {
-	*strings.Reader
+	strings.Reader
 }
 
 func (*rwc) Write(b []byte) (int, error) {
@@ -813,18 +814,65 @@ func (*rwc) Close() error {
 	return nil
 }
 
-func FuzzMultistream(f *testing.F) {
-	f.Add("/multistream/1.0.0")
-	f.Add(ProtocolID)
+func FuzzHandler(f *testing.F) {
+	f.Add("/noise", "/tls", "", "\x13/multistream/1.0.0\n\a/noise\n")
 
-	f.Fuzz(func(t *testing.T, b string) {
-		readStream := strings.NewReader(b)
-		input := &rwc{readStream}
+	f.Fuzz(func(t *testing.T, p1, p2, p3, b string) {
+		input := &rwc{*strings.NewReader(b)}
 
 		mux := NewMultistreamMuxer[string]()
-		mux.AddHandler("/a", nil)
-		mux.AddHandler("/b", nil)
+		h := func(protocol string, rwc io.ReadWriteCloser) error {
+			defer rwc.Close()
+			_, err := io.Copy(io.Discard, rwc)
+			return err
+		}
+		if p1 != "" {
+			mux.AddHandler(p1, h)
+		}
+		if p2 != "" {
+			mux.AddHandler(p2, h)
+		}
+		if p3 != "" {
+			mux.AddHandler(p3, h)
+		}
 		_ = mux.Handle(input)
+	})
+}
+
+func FuzzSelectOneOf(f *testing.F) {
+	f.Add("/noise", "/tls", "", "\x13/multistream/1.0.0\n\a/noise\n")
+
+	f.Fuzz(func(t *testing.T, p1, p2, p3, response string) {
+		protos := make([]string, 0, 3)
+		if p1 != "" {
+			protos = append(protos, p1)
+		}
+		if p2 != "" {
+			protos = append(protos, p2)
+		}
+		if p3 != "" {
+			protos = append(protos, p3)
+		}
+
+		r := &rwc{*strings.NewReader(response)}
+
+		p, err := SelectOneOf(protos, r)
+		if err != nil {
+			return
+		}
+		if !slices.Contains(protos, p) {
+			t.Fatal("matched proto which wasn't proposed")
+		}
+	})
+}
+
+func FuzzSelectOrFail(f *testing.F) {
+	f.Add("/noise", "\x13/multistream/1.0.0\n\a/noise\n")
+
+	f.Fuzz(func(t *testing.T, proto, response string) {
+		r := &rwc{*strings.NewReader(response)}
+
+		_ = SelectProtoOrFail(proto, r)
 	})
 }
 
