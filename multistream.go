@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime/debug"
 	"sync"
+	"testing"
 
 	"github.com/multiformats/go-varint"
 )
@@ -192,12 +193,14 @@ func (msm *MultistreamMuxer[T]) findHandler(proto T) *Handler[T] {
 // Negotiate performs protocol selection and returns the protocol name and
 // the matching handler function for it (or an error).
 func (msm *MultistreamMuxer[T]) Negotiate(rwc io.ReadWriteCloser) (proto T, handler HandlerFunc[T], err error) {
-	defer func() {
-		if rerr := recover(); rerr != nil {
-			fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
-			err = fmt.Errorf("panic in multistream negotiation: %s", rerr)
-		}
-	}()
+	if !testing.Testing() {
+		defer func() {
+			if rerr := recover(); rerr != nil {
+				fmt.Fprintf(os.Stderr, "caught panic: %s\n%s\n", rerr, debug.Stack())
+				err = fmt.Errorf("panic in multistream negotiation: %s", rerr)
+			}
+		}()
+	}
 
 	// Send the multistream protocol ID
 	// Ignore the error here.  We want the handshake to finish, even if the
