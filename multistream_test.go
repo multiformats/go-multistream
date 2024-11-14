@@ -9,6 +9,7 @@ import (
 	"net"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -799,6 +800,88 @@ func TestNegotiatePeerSendsAndCloses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newPair() (*chanPipe, *chanPipe) {
+	a := make(chan []byte, 16)
+	b := make(chan []byte, 16)
+	aReadClosed := atomic.Bool{}
+	bReadClosed := atomic.Bool{}
+	return &chanPipe{r: a, w: b, myReadClosed: &aReadClosed, peerReadClosed: &bReadClosed},
+		&chanPipe{r: b, w: a, myReadClosed: &bReadClosed, peerReadClosed: &aReadClosed}
+}
+
+type chanPipe struct {
+	r, w chan []byte
+	buf  bytes.Buffer
+
+	myReadClosed   *atomic.Bool
+	peerReadClosed *atomic.Bool
+}
+
+func (cp *chanPipe) Read(b []byte) (int, error) {
+	if cp.buf.Len() > 0 {
+		return cp.buf.Read(b)
+	}
+
+	buf, ok := <-cp.r
+	if !ok {
+		return 0, io.EOF
+	}
+
+	cp.buf.Write(buf)
+	return cp.buf.Read(b)
+}
+
+func (cp *chanPipe) Write(b []byte) (int, error) {
+	if cp.peerReadClosed.Load() {
+		panic("peer's read side closed")
+	}
+	copied := make([]byte, len(b))
+	copy(copied, b)
+	cp.w <- copied
+	return len(b), nil
+}
+
+func (cp *chanPipe) Close() error {
+	cp.myReadClosed.Store(true)
+	close(cp.w)
+	return nil
+}
+
+func TestReadHandshakeOnClose(t *testing.T) {
+	rw1, rw2 := newPair()
+
+	clientDone := make(chan struct{})
+	go func() {
+		l1 := NewMSSelect(rw1, "a")
+		_, _ = l1.Write([]byte("hello"))
+		_ = l1.Close()
+		close(clientDone)
+	}()
+
+	serverDone := make(chan error)
+
+	server := NewMultistreamMuxer[string]()
+	server.AddHandler("a", func(protocol string, rwc io.ReadWriteCloser) error {
+		_, err := io.ReadAll(rwc)
+		rwc.Close()
+		serverDone <- err
+		return nil
+	})
+
+	p, h, err := server.Negotiate(rw2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go h(p, rw2)
+
+	err = <-serverDone
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-clientDone
 }
 
 type rwc struct {
