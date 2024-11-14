@@ -837,7 +837,9 @@ func (cp *chanPipe) Write(b []byte) (int, error) {
 	if cp.peerReadClosed.Load() {
 		panic("peer's read side closed")
 	}
-	cp.w <- b
+	copied := make([]byte, len(b))
+	copy(copied, b)
+	cp.w <- copied
 	return len(b), nil
 }
 
