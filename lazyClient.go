@@ -161,7 +161,7 @@ func (l *lazyClientConn[T]) Close() error {
 	// multistream select since it can't write to the stream anymore and may
 	// drop the stream.
 	//
-	// Note: We currently handle this case in Go, but rust-libp2p does not.
+	// Note: We currently handle this case in Go(https://github.com/multiformats/go-multistream/pull/87), but rust-libp2p does not.
 	l.rhandshakeOnce.Do(l.doReadHandshake)
 	return l.con.Close()
 }
