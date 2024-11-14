@@ -147,6 +147,22 @@ func (l *lazyClientConn[T]) Close() error {
 	// closed the stream for reading. I mean, we're the initiator so that's
 	// strange... but it's still allowed
 	_ = l.Flush()
+
+	// Finish reading the handshake before we close the connection/stream. This
+	// is necessary so that the other side can finish sending its response to our
+	// multistream header before we tell it we are done reading.
+	//
+	// Example:
+	// We open a QUIC stream, write the protocol `/a`, send 1 byte of application
+	// data, and immediately close.
+	//
+	// This can result in a single packet that contains the stream data along
+	// with a STOP_SENDING frame. The other side may be unable to negotiate
+	// multistream select since it can't write to the stream anymore and may
+	// drop the stream.
+	//
+	// Note: We currently handle this case in Go, but rust-libp2p does not.
+	l.rhandshakeOnce.Do(l.doReadHandshake)
 	return l.con.Close()
 }
 
