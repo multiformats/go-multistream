@@ -134,9 +134,7 @@ func (l *lazyClientConn[T]) Write(b []byte) (int, error) {
 	return l.con.Write(b)
 }
 
-// Close closes the underlying io.ReadWriteCloser
-//
-// This does not flush anything.
+// Close closes the underlying io.ReadWriteCloser after finishing the handshake.
 func (l *lazyClientConn[T]) Close() error {
 	// As the client, we flush the handshake on close to cover an
 	// interesting edge-case where the server only speaks a single protocol
