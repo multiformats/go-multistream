@@ -677,7 +677,7 @@ func (rob *readonlyBuffer) Close() error {
 	return nil
 }
 
-func TestNegotiatThenWriteFail(t *testing.T) {
+func TestNegotiateThenWriteFail(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	err := delimWrite(buf, []byte(ProtocolID))
