@@ -1,5 +1,5 @@
 // Package multistream implements a simple stream router for the
-// multistream-select protocoli. The protocol is defined at
+// multistream-select protocol. The protocol is defined at
 // https://github.com/multiformats/multistream-select
 package multistream
 
