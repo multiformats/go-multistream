@@ -753,8 +753,8 @@ func TestNegotiatePeerSendsAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	delimtedProtocolID := make([]byte, buf.Len())
-	copy(delimtedProtocolID, buf.Bytes())
+	delimitedProtocolID := make([]byte, buf.Len())
+	copy(delimitedProtocolID, buf.Bytes())
 
 	err = delimWrite(&buf, []byte("foo"))
 	if err != nil {
@@ -777,7 +777,7 @@ func TestNegotiatePeerSendsAndCloses(t *testing.T) {
 				// We mock the closed stream by only expecting a single write. The
 				// mockstream will error on any more writes (same as writing to a closed
 				// stream)
-				expectWrite: [][]byte{delimtedProtocolID},
+				expectWrite: [][]byte{delimitedProtocolID},
 				toRead:      [][]byte{buf.Bytes()},
 			},
 		},
