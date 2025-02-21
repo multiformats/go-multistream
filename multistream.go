@@ -159,7 +159,7 @@ func (msm *MultistreamMuxer[T]) removeHandler(protocol T) {
 	}
 }
 
-// Protocols returns the list of handler-names added to this this muxer.
+// Protocols returns the list of handler-names added to this muxer.
 func (msm *MultistreamMuxer[T]) Protocols() []T {
 	msm.handlerlock.RLock()
 	defer msm.handlerlock.RUnlock()
