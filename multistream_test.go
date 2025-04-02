@@ -9,6 +9,7 @@ import (
 	"net"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -936,5 +937,29 @@ func TestComparableErrors(t *testing.T) {
 
 	if err3.Protos[0] != "/a" {
 		t.Fatalf("Should be read as ErrNotSupported")
+	}
+}
+
+func TestOnceFunc(t *testing.T) {
+	o := newOnceFunc()
+	start := make(chan struct{})
+	var runCount int
+	var wg sync.WaitGroup
+	const workers = 3
+	wg.Add(workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			<-start
+			o.Do(func() { runCount++ })
+			if runCount != 1 {
+				t.Errorf("Do returned before func was run")
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if runCount != 1 {
+		t.Fatalf("should have run only once")
 	}
 }
