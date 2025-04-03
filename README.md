@@ -10,8 +10,7 @@
 
 > an implementation of the multistream protocol in go
 
-This package implements a simple stream router for the multistream-select protocol.
-The protocol is defined [here](https://github.com/multiformats/multistream-select).
+This package implements a simple stream router for the [multistream-select protocol](https://github.com/multiformats/multistream-select).
 
 ## Table of Contents
 
