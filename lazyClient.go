@@ -12,8 +12,8 @@ func NewMSSelect[T StringLike](c io.ReadWriteCloser, proto T) LazyConn {
 		protos: []T{ProtocolID, proto},
 		con:    c,
 
-		rhandshakeOnce: newOnceFunc(),
-		whandshakeOnce: newOnceFunc(),
+		rhandshakeOnce: newOnce(),
+		whandshakeOnce: newOnce(),
 	}
 }
 
@@ -25,27 +25,27 @@ func NewMultistream[T StringLike](c io.ReadWriteCloser, proto T) LazyConn {
 		protos: []T{proto},
 		con:    c,
 
-		rhandshakeOnce: newOnceFunc(),
-		whandshakeOnce: newOnceFunc(),
+		rhandshakeOnce: newOnce(),
+		whandshakeOnce: newOnce(),
 	}
 }
 
-// onceFunc is a sync.Once that can be used by synctest.
-// For the Multistream, it is a bit better than sync.Once because it doesn't
+// once is a sync.Once that can be used by synctest.
+// For Multistream, it is a bit better than sync.Once because it doesn't
 // spin when acquiring the lock.
-type onceFunc struct {
+type once struct {
 	sem chan struct{}
 }
 
-func newOnceFunc() *onceFunc {
-	o := onceFunc{
+func newOnce() *once {
+	o := once{
 		sem: make(chan struct{}, 1),
 	}
 	o.sem <- struct{}{}
 	return &o
 }
 
-func (o *onceFunc) Do(f func()) {
+func (o *once) Do(f func()) {
 	// We only ever pull a single value from the channel. But we want to block
 	// Do until the first call to Do has completed. The first call will close
 	// the channel, so by checking if it's closed we know we don't need to do
@@ -66,11 +66,11 @@ func (o *onceFunc) Do(f func()) {
 // See: https://github.com/multiformats/go-multistream/issues/20
 type lazyClientConn[T StringLike] struct {
 	// Used to ensure we only trigger the write half of the handshake once.
-	rhandshakeOnce *onceFunc
+	rhandshakeOnce *once
 	rerr           error
 
 	// Used to ensure we only trigger the read half of the handshake once.
-	whandshakeOnce *onceFunc
+	whandshakeOnce *once
 	werr           error
 
 	// The sequence of protocols to negotiate.

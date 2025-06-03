@@ -941,7 +941,7 @@ func TestComparableErrors(t *testing.T) {
 }
 
 func TestOnceFunc(t *testing.T) {
-	o := newOnceFunc()
+	o := newOnce()
 	start := make(chan struct{})
 	var runCount int
 	var wg sync.WaitGroup
