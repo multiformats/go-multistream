@@ -1,6 +1,7 @@
 package multistream
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 )
@@ -9,8 +10,27 @@ import (
 // protocol selection with a MultistreamMuxer.
 func NewMSSelect[T StringLike](c io.ReadWriteCloser, proto T) LazyConn {
 	return &lazyClientConn[T]{
-		protos: []T{ProtocolID, proto},
+		protos: []protoInfo[T]{{ID: ProtocolID}, {ID: proto}},
 		con:    c,
+
+		rhandshakeOnce: newOnce(),
+		whandshakeOnce: newOnce(),
+	}
+}
+
+func NewMSSelect2[T StringLike](c io.ReadWriteCloser, proto T, peerProtos []T) LazyConn {
+	t := &abbrevTree[T]{}
+	for _, p := range peerProtos {
+		t.AddProtocol(p)
+	}
+
+	abbrv := t.Abbreviate(proto)
+	return &lazyClientConn[T]{
+		protos: []protoInfo[T]{
+			{ID: ProtocolID, Abbrev: ProtocolAbbrev},
+			{ID: proto, Abbrev: abbrv},
+		},
+		con: c,
 
 		rhandshakeOnce: newOnce(),
 		whandshakeOnce: newOnce(),
@@ -22,7 +42,7 @@ func NewMSSelect[T StringLike](c io.ReadWriteCloser, proto T) LazyConn {
 // NewMSSelect.
 func NewMultistream[T StringLike](c io.ReadWriteCloser, proto T) LazyConn {
 	return &lazyClientConn[T]{
-		protos: []T{proto},
+		protos: []protoInfo[T]{{ID: proto}},
 		con:    c,
 
 		rhandshakeOnce: newOnce(),
@@ -58,6 +78,11 @@ func (o *once) Do(f func()) {
 	f()
 }
 
+type protoInfo[T StringLike] struct {
+	ID     T
+	Abbrev []byte
+}
+
 // lazyClientConn is a ReadWriteCloser adapter that lazily negotiates a protocol
 // using multistream-select on first use.
 //
@@ -74,7 +99,7 @@ type lazyClientConn[T StringLike] struct {
 	werr           error
 
 	// The sequence of protocols to negotiate.
-	protos []T
+	protos []protoInfo[T]
 
 	// The inner connection.
 	con io.ReadWriteCloser
@@ -104,18 +129,22 @@ func (l *lazyClientConn[T]) Read(b []byte) (int, error) {
 func (l *lazyClientConn[T]) doReadHandshake() {
 	for _, proto := range l.protos {
 		// read protocol
-		tok, err := ReadNextToken[T](l.con)
+		tok, err := ReadNextTokenBytes(l.con)
 		if err != nil {
 			l.rerr = err
 			return
 		}
 
-		if tok == "na" {
-			l.rerr = ErrNotSupported[T]{[]T{proto}}
+		if bytes.Equal(tok, []byte("na")) {
+			l.rerr = ErrNotSupported[T]{[]T{proto.ID}}
 			return
 		}
-		if tok != proto {
-			l.rerr = fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", tok, proto)
+		if proto.Abbrev != nil && !bytes.Equal(tok, proto.Abbrev) {
+			l.rerr = fmt.Errorf("protocol mismatch in lazy handshake ( %x != %x )", tok, proto.Abbrev)
+			return
+		}
+		if proto.Abbrev == nil && T(tok) != proto.ID {
+			l.rerr = fmt.Errorf("protocol mismatch in lazy handshake ( %s != %s )", T(tok), proto.ID)
 			return
 		}
 	}
@@ -131,7 +160,11 @@ func (l *lazyClientConn[T]) doWriteHandshakeWithData(extra []byte) int {
 	defer putWriter(buf)
 
 	for _, proto := range l.protos {
-		l.werr = delimWrite(buf, []byte(proto))
+		if proto.Abbrev != nil {
+			l.werr = delimWrite(buf, proto.Abbrev)
+		} else {
+			l.werr = delimWrite(buf, []byte(proto.ID))
+		}
 		if l.werr != nil {
 			return 0
 		}
