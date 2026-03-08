@@ -1,5 +1,5 @@
 // Package multistream implements a simple stream router for the
-// multistream-select protocoli. The protocol is defined at
+// multistream-select protocol. The protocol is defined at
 // https://github.com/multiformats/multistream-select
 package multistream
 
@@ -88,7 +88,7 @@ func delimWriteBuffered(w io.Writer, mes []byte) error {
 	return bw.Flush()
 }
 
-func delitmWriteAll(w io.Writer, messages ...[]byte) error {
+func delimWriteAll(w io.Writer, messages ...[]byte) error {
 	for _, mes := range messages {
 		if err := delimWrite(w, mes); err != nil {
 			return fmt.Errorf("failed to write messages %s, err: %v	", string(mes), err)
@@ -159,7 +159,7 @@ func (msm *MultistreamMuxer[T]) removeHandler(protocol T) {
 	}
 }
 
-// Protocols returns the list of handler-names added to this this muxer.
+// Protocols returns the list of handler-names added to this muxer.
 func (msm *MultistreamMuxer[T]) Protocols() []T {
 	msm.handlerlock.RLock()
 	defer msm.handlerlock.RUnlock()

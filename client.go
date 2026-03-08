@@ -54,7 +54,7 @@ func SelectProtoOrFail[T StringLike](proto T, rwc io.ReadWriteCloser) (err error
 	errCh := make(chan error, 1)
 	go func() {
 		var buf bytes.Buffer
-		if err := delitmWriteAll(&buf, []byte(ProtocolID), []byte(proto)); err != nil {
+		if err := delimWriteAll(&buf, []byte(ProtocolID), []byte(proto)); err != nil {
 			errCh <- err
 			return
 		}
